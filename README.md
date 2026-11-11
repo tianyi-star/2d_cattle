@@ -29,6 +29,7 @@ flowchart TD
 .
 ├── LICENSE                  Apache License 2.0
 ├── LICENSE.md               MIT License
+├── CITATION.cff             author and ORCID for GitHub citation
 ├── README.md
 ├── requirements.txt
 ├── configs/example.yaml     wiring defaults, not measured results
@@ -180,9 +181,12 @@ Extension points, all left open for the experiment:
 
 ## Citation
 
+Tianyi Ma, Zhengzhou University. ORCID: [0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X).
+
 ```bibtex
-@software{bo2026mutong,
-  author       = {Bo},
+@software{ma2026mutong,
+  author       = {Ma, Tianyi},
+  orcid        = {0000-0003-1167-621X},
   title        = {Mutong: UAV-based Individual Cattle Identification},
   year         = {2026},
   organization = {Zhengzhou University},
