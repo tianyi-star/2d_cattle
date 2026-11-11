@@ -66,7 +66,20 @@ python -m src.self_sup_dynamic --help
 
 ## Dataset
 
-No cattle dataset is redistributed here. Place a private UAV collection on disk and describe it with a CSV. Paths are resolved from the working directory and, if that fails, from the directory that contains the CSV.
+The external UAV cattle collection is Yaowu Wang's Zenodo record [Dataset for cattle growth monitoring in PLF using UAV-based LiDAR](https://zenodo.org/records/13364663) ([10.5281/zenodo.13364663](https://doi.org/10.5281/zenodo.13364663), 23 August 2024, CC BY 4.0). Zenodo describes it as the dataset for the data article "Integrated UAV-based LiDAR and RGB Data for Individual-Level Cattle Growth Monitoring in Precision Livestock Farming." The deposited archive is `dataShare.zip`. This repository does not redistribute that file.
+
+```bibtex
+@dataset{wang2024uavlidar,
+  author    = {Wang, Yaowu},
+  title     = {Dataset for cattle growth monitoring in {PLF} using {UAV}-based {LiDAR}},
+  year      = {2024},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.13364663},
+  url       = {https://doi.org/10.5281/zenodo.13364663}
+}
+```
+
+Download the archive from Zenodo and describe the images you use with a CSV. Paths are resolved from the working directory and, if that fails, from the directory that contains the CSV. The commands in this repository read that CSV. They do not infer a layout from `dataShare.zip`.
 
 Labeled manifest, `data/manifest.csv`:
 
@@ -194,6 +207,10 @@ Tianyi Ma, Zhengzhou University. ORCID: [0000-0003-1167-621X](https://orcid.org/
   license      = {Apache-2.0 AND MIT}
 }
 ```
+
+## Funding
+
+This work was supported by the Songshan Laboratory (No.241110210200) and Major Science and Technology Special Project of Henan Province (No.221100210600).
 
 ## License
 

@@ -9,3 +9,15 @@ authors:
 year: 2026
 url: "https://github.com/tianyi-star/2d_cattle"
 repository-code: "https://github.com/tianyi-star/2d_cattle"
+references:
+  - type: dataset
+    title: "Dataset for cattle growth monitoring in PLF using UAV-based LiDAR"
+    authors:
+      - family-names: Wang
+        given-names: Yaowu
+        affiliation: Wageningen University & Research
+        orcid: "https://orcid.org/0000-0001-8853-8988"
+    year: 2024
+    doi: 10.5281/zenodo.13364663
+    url: "https://zenodo.org/records/13364663"
+    license: CC-BY-4.0
