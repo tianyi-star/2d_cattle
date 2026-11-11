@@ -6,7 +6,7 @@
 
 **Tianyi Ma**, Zhengzhou University · [ORCID 0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · [GitHub @tianyi-star](https://github.com/tianyi-star)
 
-Mutong (牧瞳) identifies individual cattle in UAV images from coat appearance. The release is organized as a dataset-and-benchmark repository: a public archive, a local path file, and scripts for segmentation, dataset balancing, few-shot training, and identification. It does not distribute cattle images, trained weights, or measured recognition figures.
+Mutong (牧瞳) is the 2D stage of this project. It identifies individual cattle in UAV images from coat appearance. This repository holds that stage only: a public archive link, a local path file, and scripts for segmentation, dataset balancing, few-shot training, and identification. It does not distribute cattle images, trained weights, or measured recognition figures. 3D and 4D representations are later repositories, not modules in this one.
 
 ```mermaid
 flowchart TD
@@ -22,6 +22,18 @@ flowchart TD
     vit --> dyn
     dyn --> ident[Individual Cattle Identification]
 ```
+
+## Scope
+
+The program has four questions. Only the first is in this repository.
+
+| Stage | Question | Where it lives |
+| --- | --- | --- |
+| 1. Mutong, 2D | RQ1. How can individual cattle be identified from limited and imbalanced visual observations? | This repository: coat segmentation, F-ODS balancing, few-shot YOLO / metric / ViT, and a dynamic identity memory |
+| 2. 3DGS | RQ2. Can the visual characteristics of an individual be represented in 3D, rather than only in 2D images? | A later repository. The first reconstruction target is the face |
+| 3. 4DGS | RQ3. How can appearance and motion be represented continuously over time? RQ4. Can a dynamic Gaussian representation do that efficiently under natural movement? | A later repository. It needs a new multi-camera dataset and is aimed at walk replay and prediction |
+
+Stage 2 starts only after stage 1 can attach an identity to a face crop through the manifest contract in this repository. Stage 3 starts only after a face can be reconstructed, and it does not reuse the current Zenodo archive as a walk dataset. RQ3 is the question. RQ4 names one candidate representation, 4D Gaussian splatting, rather than a second system.
 
 ## Data description
 
