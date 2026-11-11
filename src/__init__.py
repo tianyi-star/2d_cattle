@@ -1,5 +1,5 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
-# SPDX-License-Identifier: Apache-2.0 AND MIT
+# SPDX-License-Identifier: Apache-2.0
 """Mutong (牧瞳): UAV-based individual cattle identification.
 
 The package exposes the four pipeline stages: coat segmentation, F-ODS

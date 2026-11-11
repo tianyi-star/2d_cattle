@@ -1,5 +1,5 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
-# SPDX-License-Identifier: Apache-2.0 AND MIT
+# SPDX-License-Identifier: Apache-2.0
 """Self-supervised dynamic learning for an enrolled cattle identity memory.
 
 Labeled images build one prototype per individual. Unlabeled UAV frames then

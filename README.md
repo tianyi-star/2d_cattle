@@ -173,8 +173,7 @@ Extension points:
 
 ```text
 .
-├── LICENSE
-├── LICENSE.md
+├── LICENSE                  Apache License 2.0
 ├── CITATION.cff
 ├── README.md
 ├── requirements.txt
@@ -209,7 +208,7 @@ Tianyi Ma, Zhengzhou University. ORCID: [0000-0003-1167-621X](https://orcid.org/
   year         = {2026},
   organization = {Zhengzhou University},
   url          = {https://github.com/tianyi-star/2d_cattle},
-  license      = {Apache-2.0 AND MIT}
+  license      = {Apache-2.0}
 }
 ```
 
@@ -219,32 +218,6 @@ This work was supported by the Songshan Laboratory (No.241110210200) and Major S
 
 ## License
 
-This project is dual-licensed under the Apache License 2.0 and the MIT License.
+This software is licensed under the Apache License 2.0. The full text is in [LICENSE](LICENSE). The copyright notice is `Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）`.
 
-The Apache License 2.0 is the license in [LICENSE](LICENSE). Its copyright notice is `Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）`.
-
-The MIT License notice below is retained verbatim from [LICENSE.md](LICENSE.md).
-
-```text
-MIT License
-
-Copyright (c) 2026 Bo, Zhengzhou University / Mutong
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+The Zenodo cattle archive remains under CC BY 4.0. That license belongs to the dataset depositor and does not apply to this code.

@@ -1,5 +1,5 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
-# SPDX-License-Identifier: Apache-2.0 AND MIT
+# SPDX-License-Identifier: Apache-2.0
 """Few-shot training entry points for individual cattle identification.
 
 Three branches share one manifest contract and one configuration file:

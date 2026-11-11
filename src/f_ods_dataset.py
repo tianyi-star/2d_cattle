@@ -1,5 +1,5 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
-# SPDX-License-Identifier: Apache-2.0 AND MIT
+# SPDX-License-Identifier: Apache-2.0
 """F-ODS dataset optimization for individual cattle identification.
 
 F-ODS is the dataset-optimization stage of this project. The routine below

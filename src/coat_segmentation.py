@@ -1,5 +1,5 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
-# SPDX-License-Identifier: Apache-2.0 AND MIT
+# SPDX-License-Identifier: Apache-2.0
 """Coat-pattern segmentation for UAV cattle images.
 
 The trainable segmentor is supplied by the caller. This repository does not
