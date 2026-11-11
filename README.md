@@ -1,5 +1,11 @@
 # Mutong: UAV-based Individual Cattle Identification
 
+[![ORCID](https://img.shields.io/badge/ORCID-0000--0003--1167--621X-A6CE39)](https://orcid.org/0000-0003-1167-621X)
+[![Dataset](https://zenodo.org/badge/DOI/10.5281/zenodo.13364663.svg)](https://doi.org/10.5281/zenodo.13364663)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB)](requirements.txt)
+
+**Tianyi Ma**, Zhengzhou University · [ORCID 0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · [GitHub @tianyi-star](https://github.com/tianyi-star)
+
 Mutong (牧瞳) is a research codebase for identifying individual cattle in images captured by an unmanned aerial vehicle (UAV). Coat appearance is localized before identity learning. Frames pass through coat-pattern segmentation, balanced dataset construction, and the F-ODS dataset-optimization step. A few-shot learner then maps appearance to an individual with one of three branches: a YOLO classifier, a metric-learning encoder, or a Vision Transformer. A self-supervised dynamic stage updates the enrolled identity memory from later unlabeled frames.
 
 This repository is the software skeleton for that pipeline. It defines command-line entry points, the manifest contract, and the loss functions an experiment plugs into. It does not distribute cattle images, trained weights, or measured recognition figures.
