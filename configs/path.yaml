@@ -1,0 +1,16 @@
+# Local data locations. Paths are relative to the repository root unless absolute.
+# Edit these after downloading the Zenodo archive. This file does not point at
+# images shipped with the repository.
+
+image_dir: data/raw
+mask_dir: data/masks
+manifest: data/manifest.csv
+fods_manifest: data/manifest_fods.csv
+unlabeled_manifest: data/unlabeled.csv
+mask_index: data/mask_index.csv
+output_dir: outputs
+memory: outputs/memory.pt
+query_image: data/raw/query.jpg
+segmentor_checkpoint: ""
+encoder_checkpoint: outputs/metric/encoder_spec.json
+config: configs/example.yaml

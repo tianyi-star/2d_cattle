@@ -6,13 +6,7 @@
 
 **Tianyi Ma**, Zhengzhou University · [ORCID 0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · [GitHub @tianyi-star](https://github.com/tianyi-star)
 
-Mutong (牧瞳) is a research codebase for identifying individual cattle in images captured by an unmanned aerial vehicle (UAV). Coat appearance is localized before identity learning. Frames pass through coat-pattern segmentation, balanced dataset construction, and the F-ODS dataset-optimization step. A few-shot learner then maps appearance to an individual with one of three branches: a YOLO classifier, a metric-learning encoder, or a Vision Transformer. A self-supervised dynamic stage updates the enrolled identity memory from later unlabeled frames.
-
-This repository is the software skeleton for that pipeline. It defines command-line entry points, the manifest contract, and the loss functions an experiment plugs into. It does not distribute cattle images, trained weights, or measured recognition figures.
-
-## Pipeline
-
-Segmentation writes a mask for each UAV frame. Those masks are available for later cropping or annotation; identity labels stay in a CSV manifest. F-ODS keeps at most a chosen number of images for each individual and attaches an inverse-frequency `sample_weight`. Few-shot training reads the resulting manifest. The metric branch saves an embedding encoder. Dynamic learning enrolls one prototype per individual from that encoder, takes a normalized temperature-scaled cross-entropy step on unlabeled frames, and moves the nearest prototype. Identification returns the nearest enrolled individual and the cosine distance of one query.
+Mutong (牧瞳) identifies individual cattle in UAV images from coat appearance. The release is organized as a dataset-and-benchmark repository: a public archive, a local path file, and scripts for segmentation, dataset balancing, few-shot training, and identification. It does not distribute cattle images, trained weights, or measured recognition figures.
 
 ```mermaid
 flowchart TD
@@ -29,50 +23,17 @@ flowchart TD
     dyn --> ident[Individual Cattle Identification]
 ```
 
-## Repository layout
+## Data description
 
-```text
-.
-├── LICENSE                  Apache License 2.0
-├── LICENSE.md               MIT License
-├── CITATION.cff             author and ORCID for GitHub citation
-├── README.md
-├── requirements.txt
-├── configs/example.yaml     wiring defaults, not measured results
-└── src/
-    ├── __init__.py
-    ├── coat_segmentation.py
-    ├── f_ods_dataset.py
-    ├── fewshot_train.py
-    └── self_sup_dynamic.py
-```
+The image archive used with this project is Yaowu Wang's Zenodo record [Dataset for cattle growth monitoring in PLF using UAV-based LiDAR](https://zenodo.org/records/13364663) ([10.5281/zenodo.13364663](https://doi.org/10.5281/zenodo.13364663), 23 August 2024, CC BY 4.0). Zenodo describes it as the dataset for the data article "Integrated UAV-based LiDAR and RGB Data for Individual-Level Cattle Growth Monitoring in Precision Livestock Farming."
 
-Generated run directories, local image trees, and `*.pt` files are listed in `.gitignore`.
+This repository does not unpack that archive for you and does not claim a folder layout inside it. After download, place the frames you use under the directory in `configs/path.yaml` and describe them with a CSV manifest. Every benchmark script reads that file rather than a hard-coded tree.
 
-## Environment
+**Data file:** [Zenodo record](https://zenodo.org/records/13364663) · [DOI](https://doi.org/10.5281/zenodo.13364663)
 
-Python 3.10 or newer is required. Training imports PyTorch, timm, and Ultralytics only when the corresponding command runs. No checkpoint is downloaded unless `--pretrained` is set for a timm backbone. ImageNet initialization obtained that way is not a weight released by this project.
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-`requirements.txt` lists lower bounds for PyTorch, torchvision, Ultralytics, timm, OpenCV, NumPy, Pillow, PyYAML, tqdm, and scikit-learn. The current commands call PyTorch, Ultralytics, timm, OpenCV, and PyYAML. torchvision, tqdm, and scikit-learn are declared for experiments that replace the hooks in `src/`.
-
-The entry points can be inspected before those packages are installed:
-
-```bash
-python -m src.coat_segmentation --help
-python -m src.f_ods_dataset --help
-python -m src.fewshot_train --help
-python -m src.self_sup_dynamic --help
-```
-
-## Dataset
-
-The external UAV cattle collection is Yaowu Wang's Zenodo record [Dataset for cattle growth monitoring in PLF using UAV-based LiDAR](https://zenodo.org/records/13364663) ([10.5281/zenodo.13364663](https://doi.org/10.5281/zenodo.13364663), 23 August 2024, CC BY 4.0). Zenodo describes it as the dataset for the data article "Integrated UAV-based LiDAR and RGB Data for Individual-Level Cattle Growth Monitoring in Precision Livestock Farming." The deposited archive is `dataShare.zip`. This repository does not redistribute that file.
+| File | Description | Size | License |
+| --- | --- | --- | --- |
+| `dataShare.zip` | UAV cattle archive deposited by Yaowu Wang | 26,486,342,645 bytes | CC BY 4.0 |
 
 ```bibtex
 @dataset{wang2024uavlidar,
@@ -85,9 +46,43 @@ The external UAV cattle collection is Yaowu Wang's Zenodo record [Dataset for ca
 }
 ```
 
-Download the archive from Zenodo and describe the images you use with a CSV. Paths are resolved from the working directory and, if that fails, from the directory that contains the CSV. The commands in this repository read that CSV. They do not infer a layout from `dataShare.zip`.
+### Local layout
 
-Labeled manifest, `data/manifest.csv`:
+Edit [`configs/path.yaml`](configs/path.yaml) so each entry points at your machine. Relative paths are resolved from the repository root.
+
+```text
+${ROOT}
+|-- data
+|   |-- raw                  image_dir
+|   |-- masks                 mask_dir
+|   |-- manifest.csv          manifest
+|   |-- manifest_fods.csv     fods_manifest
+|   |-- unlabeled.csv         unlabeled_manifest
+|-- outputs
+|   |-- metric
+|   |-- vit
+|   |-- yolo
+|   |-- memory.pt
+|-- configs
+    |-- path.yaml
+    |-- example.yaml
+```
+
+| Path key | Description | Required columns or contents |
+| --- | --- | --- |
+| `image_dir` | UAV frames passed to coat segmentation | image files |
+| `manifest` | Labeled identity table | `image_path`, `identity_id`; optional `split`, `mask_path` |
+| `fods_manifest` | Manifest after the F-ODS cap, with `sample_weight` | same columns plus `sample_weight` |
+| `unlabeled_manifest` | Frames for the dynamic update | `image_path` |
+| `mask_dir` | Coat masks written by segmentation | PNG masks |
+| `encoder_checkpoint` | Metric-branch encoder spec | `encoder_spec.json` produced by training |
+| `memory` | Enrolled identity prototypes | written by `enroll_memory.sh` |
+
+`split`, when present, must be `train` or `val` on every row. The YOLO branch needs both values. The metric and ViT branches train on `train` rows, or on every row when `split` is absent, and they do not compute a validation figure.
+
+A prototypical episode needs at least `n_way` identities, each with at least `k_shot + q_query` images. F-ODS keeps at most `shots` images per identity, so `shots` must stay at least `k_shot + q_query` when few-shot training reads `fods_manifest`. The triplet loss uses `k_shot` as the number of images per identity and requires `k_shot >= 2`. The numbers in `configs/example.yaml` are wiring defaults, not a reported schedule.
+
+Example `manifest.csv`:
 
 ```text
 image_path,identity_id,split
@@ -96,11 +91,7 @@ data/raw/c001_b.jpg,c001,val
 data/raw/c002_a.jpg,c002,train
 ```
 
-`image_path` and `identity_id` are required. `split` is optional. When the column is present, every value must be `train` or `val`. The YOLO branch requires both splits. The metric and ViT branches train on `train` rows, or on every row when `split` is absent, and they do not compute a validation figure. `mask_path` is optional. The segmentation command can add it. F-ODS preserves extra columns and writes `sample_weight`.
-
-The block above shows the schema only. A prototypical episode needs at least `n_way` identities, each with at least `k_shot + q_query` images. F-ODS keeps at most `shots` images per identity, so `shots` must remain at least `k_shot + q_query` when the optimized manifest is the training input. The triplet loss uses `k_shot` as the number of images per identity in a batch and requires `k_shot >= 2`. `configs/example.yaml` follows those constraints. Its numeric values are placeholders for a wiring run.
-
-Unlabeled frames for the dynamic update, `data/unlabeled.csv`:
+Example `unlabeled.csv`:
 
 ```text
 image_path
@@ -108,95 +99,103 @@ data/raw/frame_0001.jpg
 data/raw/frame_0002.jpg
 ```
 
-The ViT loader uses `sample_weight` when that column is present on every training row. Prototypical and triplet batches are class-balanced by their samplers instead.
+Paths inside a CSV are resolved from the working directory and, if that fails, from the CSV's directory. The ViT loader uses `sample_weight` when that column is present on every training row. Prototypical and triplet batches are class-balanced by their samplers.
 
-## Training and inference
+## Setup
 
-`configs/example.yaml` holds the shared defaults. Command-line flags override it. `--branch` always selects the few-shot learner, including when the file also contains a `branch` key.
-
-Coat segmentation expects an `nn.Module` saved with `torch.save`. The forward contract is documented in `src/coat_segmentation.py`. This repository does not contain a segmentor checkpoint. `--placeholder` runs a coarse color threshold so the mask files can be checked before a segmentor exists. Masks from that mode are not coat annotations.
-
-```bash
-python -m src.coat_segmentation \
-  --images data/raw \
-  --output data/masks \
-  --checkpoint path/to/segmentor.pt \
-  --config configs/example.yaml \
-  --index data/mask_index.csv
-
-python -m src.coat_segmentation \
-  --manifest data/manifest.csv \
-  --output data/masks \
-  --placeholder \
-  --index data/manifest_masks.csv
-```
-
-F-ODS writes a balanced manifest and does not train. `score_samples` in `src/f_ods_dataset.py` is the feature-level hook. It returns `None`, and the sampler then shuffles within each identity using `--seed`. Replace that function with the experimental score before treating the selection as anything other than a cap on class count.
+1. Download `dataShare.zip` from Zenodo and put the frames you will use in the `image_dir` from `configs/path.yaml`.
+2. Write `manifest.csv` with `image_path` and `identity_id`.
+3. Clone this repository and edit `configs/path.yaml` if your directories differ.
+4. Create an environment and install dependencies. Python 3.10 or newer:
 
 ```bash
-python -m src.f_ods_dataset \
-  --manifest data/manifest.csv \
-  --output data/manifest_fods.csv \
-  --config configs/example.yaml
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-Few-shot training:
+`requirements.txt` lists lower bounds for PyTorch, torchvision, Ultralytics, timm, OpenCV, NumPy, Pillow, PyYAML, tqdm, and scikit-learn. Training imports PyTorch, timm, and Ultralytics only when that command runs. No checkpoint is downloaded unless `--pretrained` is set. ImageNet initialization obtained that way is not a weight released by this project.
+
+The entry points can be inspected before those packages are installed:
 
 ```bash
-python -m src.fewshot_train \
-  --branch metric \
-  --manifest data/manifest_fods.csv \
-  --config configs/example.yaml
-
-python -m src.fewshot_train \
-  --branch metric \
-  --metric-loss triplet \
-  --manifest data/manifest_fods.csv \
-  --config configs/example.yaml
-
-python -m src.fewshot_train \
-  --branch vit \
-  --manifest data/manifest_fods.csv \
-  --config configs/example.yaml
-
-python -m src.fewshot_train \
-  --branch yolo \
-  --manifest data/manifest_fods.csv \
-  --config configs/example.yaml
+python3 -m src.coat_segmentation --help
+python3 -m src.f_ods_dataset --help
+python3 -m src.fewshot_train --help
+python3 -m src.self_sup_dynamic --help
 ```
 
-The metric branch writes `outputs/metric/encoder_spec.json` and `encoder_state.pt`. The ViT branch writes a classifier spec under `outputs/vit/`. Dynamic learning should load the metric encoder, not that classifier. The YOLO branch accepts an architecture yaml such as `yolov8n-cls.yaml` and refuses a `.pt` model argument, so the command does not fetch a weight file. A run logs the mean training loss of its own steps. That log is not a result reported by this repository.
+## Benchmarks
 
-Self-supervised update and identification use the metric encoder spec:
+The scripts below are the reproducible entry points. They read `configs/path.yaml` and `configs/example.yaml`. They do not ship weights and they do not print a recognition figure. A training run logs only the loss of its own steps.
+
+1. Segment coat regions. Without a segmentor checkpoint, the placeholder switch only checks that mask files can be written. Those masks are not coat annotations.
 
 ```bash
-python -m src.self_sup_dynamic enroll \
-  --manifest data/manifest_fods.csv \
-  --memory outputs/memory.pt \
-  --checkpoint outputs/metric/encoder_spec.json \
-  --config configs/example.yaml
-
-python -m src.self_sup_dynamic update \
-  --unlabeled data/unlabeled.csv \
-  --memory outputs/memory.pt \
-  --checkpoint outputs/metric/encoder_spec.json \
-  --config configs/example.yaml
-
-python -m src.self_sup_dynamic identify \
-  --query data/raw/query.jpg \
-  --memory outputs/memory.pt \
-  --checkpoint outputs/metric/encoder_spec.json \
-  --config configs/example.yaml
+sh scripts/segment_coats.sh
+sh scripts/segment_coats.sh --placeholder
 ```
 
-`enroll` stores the mean embedding of each identity. `update` does not create identities: each unlabeled embedding is assigned to the nearest prototype, and that prototype takes an exponential moving average. `second_view` in `src/self_sup_dynamic.py` is a horizontal flip so the step can run; replace it with the experimental augmentation. `identify` prints one identity id and one cosine distance. It does not aggregate queries.
+2. Build the balanced F-ODS manifest. `score_samples` in `src/f_ods_dataset.py` returns `None`, so selection is a seeded shuffle within each identity. Replace that function with the experimental score before treating the subset as anything other than a class cap.
 
-Extension points, all left open for the experiment:
+```bash
+sh scripts/build_fods.sh
+```
+
+3. Train one few-shot branch. `triplet` is a metric loss, not a third branch name. The metric branch writes `outputs/metric/encoder_spec.json`. The ViT branch writes a classifier spec and is not the encoder used for the identity memory. The YOLO branch accepts an architecture yaml such as `yolov8n-cls.yaml` and refuses a `.pt` argument.
+
+```bash
+sh scripts/train_fewshot.sh metric
+sh scripts/train_fewshot.sh metric triplet
+sh scripts/train_fewshot.sh vit
+sh scripts/train_fewshot.sh yolo
+```
+
+4. Enroll prototypes, update them from unlabeled frames, and identify one query. `update` does not create identities. `second_view` in `src/self_sup_dynamic.py` is a horizontal flip so the step can run; replace it with the experimental augmentation. `identify` prints one identity id and one cosine distance.
+
+```bash
+sh scripts/enroll_memory.sh
+sh scripts/update_memory.sh
+sh scripts/identify.sh
+sh scripts/identify.sh path/to/query.jpg
+```
+
+The same commands are available as `python3 -m src.<module>`. Pass `--config configs/example.yaml` and the paths in `configs/path.yaml` when you call the modules directly.
+
+Extension points:
 
 - `score_samples` in `src/f_ods_dataset.py`
 - `build_model` in `src/coat_segmentation.py`, once a segmentor architecture exists
 - `PrototypicalLoss` and `BatchHardTripletLoss` in `src/fewshot_train.py`
 - `second_view` and `NTXentLoss` in `src/self_sup_dynamic.py`
+
+## Repository layout
+
+```text
+.
+├── LICENSE
+├── LICENSE.md
+├── CITATION.cff
+├── README.md
+├── requirements.txt
+├── configs/
+│   ├── example.yaml
+│   └── path.yaml
+├── scripts/
+│   ├── segment_coats.sh
+│   ├── build_fods.sh
+│   ├── train_fewshot.sh
+│   ├── enroll_memory.sh
+│   ├── update_memory.sh
+│   └── identify.sh
+└── src/
+    ├── coat_segmentation.py
+    ├── f_ods_dataset.py
+    ├── fewshot_train.py
+    └── self_sup_dynamic.py
+```
+
+Generated run directories, local image trees, and `*.pt` files are listed in `.gitignore`.
 
 ## Citation
 
