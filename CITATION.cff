@@ -9,6 +9,7 @@ authors:
 year: 2026
 url: "https://github.com/tianyi-star/2d_cattle"
 repository-code: "https://github.com/tianyi-star/2d_cattle"
+license: Apache-2.0
 references:
   - type: dataset
     title: "Dataset for cattle growth monitoring in PLF using UAV-based LiDAR"
