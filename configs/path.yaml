@@ -1,16 +1,14 @@
 # Local data locations. Paths are relative to the repository root unless absolute.
-# Edit these after downloading the Zenodo archive. This file does not point at
-# images shipped with the repository.
+# Point these at the private Ubuntu server. This file does not name a machine
+# and it does not download the Zenodo archive or any checkpoint.
 
-image_dir: data/raw
-mask_dir: data/masks
+raw_image_dir: data/raw
 manifest: data/manifest.csv
-fods_manifest: data/manifest_fods.csv
-unlabeled_manifest: data/unlabeled.csv
-mask_index: data/mask_index.csv
+pattern_dir: data/patterns
+pattern_manifest: data/pattern_manifest.csv
+bbox_crop_dir: data/bbox_crops
+bbox_manifest: data/bbox_manifest.csv
 output_dir: outputs
-memory: outputs/memory.pt
-query_image: data/raw/query.jpg
-segmentor_checkpoint: ""
-encoder_checkpoint: outputs/metric/encoder_spec.json
-config: configs/example.yaml
+config: configs/experiment.yaml
+yolo_weights: ""
+sam_weights: ""

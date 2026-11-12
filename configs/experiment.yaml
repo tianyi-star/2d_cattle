@@ -1,0 +1,20 @@
+# Shared training and evaluation settings for the three identification models.
+# Change a value only when all three models will be retrained with it.
+# Architecture names and the ViT prune rate are selected on the private server.
+# This file records no measured recognition figures and no filesystem paths.
+
+seed: 0
+image_size: 224
+batch_size: 8
+epochs: 1
+learning_rate: 0.0001
+embedding_dim: 512
+# ArcFace scale and angular margin, shared by every model.
+arcface_scale: 64.0
+arcface_margin: 0.5
+# Comparison input. The reserved no-SAM control uses the bbox crop mode instead.
+crop: sam
+yolo_backbone: null
+vit_name: null
+vit_prune_ratio: null
+wang_backbone: null
