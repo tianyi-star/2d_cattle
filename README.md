@@ -8,7 +8,7 @@
 
 Mutong (牧瞳) compares three identification backbones on UAV images of the cattle back coat, each trained twice. One arm sees a SAM-purified coat pattern. The other sees the same animal cropped by the YOLO box, with SAM left out. The metric head on every cell is ArcFace.
 
-This repository is the public skeleton. It keeps the interfaces, the path file, and the entry scripts. The image archive, the checkpoints, and the training and measurement code stay on the private Ubuntu server. No recognition figure is stored here.
+This repository is the public skeleton. It keeps the interfaces, the path file, and the entry scripts. The image archive, the checkpoints, and the training and measurement code stay on the private Ubuntu server. No recognition figure is stored here. A TCSVT-oriented method and protocol draft, also without measured figures, is in [`paper/method.tex`](paper/method.tex).
 
 ```mermaid
 flowchart TD

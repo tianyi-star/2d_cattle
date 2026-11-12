@@ -1,0 +1,467 @@
+% Draft method and experimental protocol for a TCSVT submission.
+% This file defines the method. It intentionally contains no measured
+% Rank-1, Rank-5, parameter count, FLOP count, or latency.
+%
+% Suggested use:
+%   \input{paper/method}
+% Requires amsmath, amssymb, booktabs, and algpseudocodex or algorithmicx
+% if the algorithm environments below are kept.
+
+\section{Contributions}
+\label{sec:contributions}
+
+The contributions of this work are as follows.
+\begin{enumerate}
+    \item We formulate farm-aware optimal dataset selection (F-ODS) for UAV cattle re-identification. Each training candidate receives a quality score from body visibility, coat-pattern cleanliness, aerial viewpoint, illumination, and sharpness. The score both caps the long-tailed support set and weights the training loss. The query set keeps its original image distribution, so the reported ranking is not computed on a cleaned test subset.
+    \item We develop a task-specific structured pruning rule for a Vision Transformer that identifies cattle from back-coat patterns. Attention heads and MLP channels are ranked by the change they induce in intra-identity and inter-identity embedding distances, rather than by a generic classification saliency. The pruned network is few-shot fine-tuned with the same additive angular margin loss used by the baselines.
+    \item We introduce farm-knowledge-guided dynamic self-training on unlabeled UAV frames. A frame can enter the training pool only after YOLO detection and SAM back-region extraction, and only when the model confidence and the F-ODS quality score both pass validation-chosen gates. Admitted frames are excluded from the query set.
+    \item We specify an end-to-end and controlled comparison pipeline. YOLO detection and SAM masking are shared, three embedding networks are trained under one ArcFace loss on the same purified crops, and a paired no-SAM arm isolates the effect of the mask. The evaluation protocol fixes the shot settings, the ranking metrics, and the efficiency measurements before any query number is read.
+\end{enumerate}
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Problem Setup and Notation}
+\label{sec:setup}
+
+Let $\mathcal{X}$ be the set of UAV frames and let $y(x)\in\{1,\ldots,N\}$ be the identity of the animal of interest when it is known. The practical pipeline never classifies a raw frame. It first localizes the animal and restricts the pixels to the back coat, which is the biometric used throughout this paper. A recognition model is an embedding
+\begin{equation}
+    \phi_{\theta}:\mathbb{R}^{H\times W\times 3}\rightarrow\mathbb{R}^{d},
+    \label{eq:embedding}
+\end{equation}
+trained so that the cosine of the angle between $\ell_2$-normalized embeddings is large for one identity and small for different identities. At test time the ArcFace class-weight matrix is discarded. Identity decisions use only these normalized embeddings.
+
+The data are divided before any quality score is consulted. The \emph{training pool} may be filtered and reweighted. A disjoint \emph{validation split}, also taken out of the frames that are not queries, is the only split on which selection parameters may be chosen. The \emph{query set} $\mathcal{Q}$ is frozen at the beginning and is never filtered by quality, confidence, or pruning statistics. This separation is the condition for an unbiased few-shot estimate.
+
+Three embedding networks are compared. YOLO-ReID is a convolutional baseline that uses a YOLO-family backbone as the trunk of $\phi_{\theta}$. The proposed model is a Vision Transformer pruned for this identification task. The third model follows the coat-pattern metric-learning architecture of Wang \emph{et al.}~\cite{wang2025coatdml}. All three consume the same crop, use the same embedding dimension $d$, and are trained with the same ArcFace loss. The detector used to find animals is a separate YOLO model. It is not the YOLO-ReID trunk, and the two sets of weights are not tied.
+
+\subsection{End-to-End Pipeline}
+\label{sec:pipeline}
+
+The deployed and the experimental pipelines share the following sequence. No stage may read the query labels, and the query set is not a source of training images.
+
+\begin{enumerate}
+    \item \textbf{Detection.} A YOLO detector maps a UAV frame $I$ to cattle boxes. Each box $B$ is an axis-aligned proposal for one animal. Boxes are the only spatial prompt passed to the segmenter.
+    \item \textbf{Back-region masking.} SAM is prompted with $B$ and returns a binary mask $M$ of the back coat inside that box. The mask is not replaced by a rectangle.
+    \item \textbf{Purified crop.} The pixels retained for recognition are
+    \begin{equation}
+        I_{\mathrm{sam}} = \operatorname{Crop}\!\left(I \odot M,\; B_{M}\right),
+        \label{eq:sam-crop}
+    \end{equation}
+    where $\odot$ is the element-wise product with $M$ broadcast over color, and $B_{M}$ is the tight axis-aligned box of the foreground pixels in $M$. Grass, hard shadow outside the coat, and limbs that fall outside $M$ are therefore absent from $I_{\mathrm{sam}}$.
+    \item \textbf{Paired control crop.} For the mask ablation only, the same detection produces
+    \begin{equation}
+        I_{\mathrm{box}} = \operatorname{Crop}(I, B)
+        \label{eq:box-crop}
+    \end{equation}
+    without calling SAM. $I_{\mathrm{box}}$ may still contain ground, shadow, and legs. A paired comparison uses the same source frame and the same box for \eqref{eq:sam-crop} and \eqref{eq:box-crop}.
+    \item \textbf{Support-set selection.} F-ODS scores and filters the training pool, as specified in Section~\ref{sec:fods}. It writes a ranked support list per identity. It does not delete or reweight $\mathcal{Q}$.
+    \item \textbf{Parallel recognition.} YOLO-ReID, the pruned ViT, and the Wang \emph{et al.} embedding are trained on the same support list and the same crop type. The main comparison uses $I_{\mathrm{sam}}$. The mask ablation repeats the three trainings on the paired $I_{\mathrm{box}}$ images.
+    \item \textbf{Dynamic self-training.} Unlabeled frames, after the same detection and masking, may be admitted to the training pool by the rule in Section~\ref{sec:dynamic}. They are never added to $\mathcal{Q}$.
+    \item \textbf{Identification.} Each query crop is embedded and compared by cosine similarity with the identity prototypes of the support set. Rank-1 and Rank-5 follow from that ordering.
+    \item \textbf{Efficiency.} Parameter count, FLOPs, and single-image latency are measured on the inference embedding, excluding the ArcFace matrix, at the common input resolution.
+\end{enumerate}
+
+The main three-branch table is computed at Step~6, before dynamic self-training, so that extra pseudo-labeled frames are not confounded with the choice of backbone. Dynamic self-training is evaluated by the dedicated comparison in Section~\ref{sec:protocol}. The fork after detection is part of this sequence: one path applies the SAM mask and the other keeps the YOLO rectangle, after which F-ODS, the three embeddings, the optional dynamic update, and cosine prototype matching follow.
+
+\subsection{Farm-Aware Optimal Dataset Selection}
+\label{sec:fods}
+
+UAV collections are long-tailed and uneven in quality. Animals that remain under the flight path contribute many frames. Animals at the edge of the pasture, lying animals, and animals blurred by airframe motion contribute few. A random support set therefore over-represents frequent identities and spends supervision on frames whose coat pattern is not actually visible. F-ODS is a training-pool operation. It does not define a cleaned benchmark.
+
+\subsubsection{Quality factors}
+\label{sec:quality}
+
+For a training candidate $x$ associated with detection $B$ and region $R$, five scores in $[0,1]$ are computed. $R$ is the SAM foreground when the candidate is a purified crop, and $R$ is the rectangle $B$ when the candidate belongs to the paired control. Normalizers that require a distribution, namely percentiles and the reference aspect ratio, are estimated on the training pool only and then frozen.
+
+\textbf{Body visibility $V$.}
+Visibility measures whether the animal instance is inside the frame and is not occluded by another detected animal. It is intentionally independent of the later decision to remove legs. Let $\Omega$ be the image domain and let $\{B_{k}\}$ be the other cattle boxes in the same frame. With $|\cdot|$ the area,
+\begin{equation}
+    V(x)
+    =
+    \frac{|B\cap\Omega|}{|B|}
+    \left(
+        1-\frac{|B\cap\bigcup_{k}B_{k}|}{|B|}
+    \right).
+    \label{eq:visibility}
+\end{equation}
+The first factor decreases when the detector box is cut by the image border. The second decreases when another animal overlaps the box. A fully visible, unoccluded instance has $V(x)=1$.
+
+\textbf{Coat-pattern cleanliness $C$.}
+Cleanliness measures whether the coat texture inside $R$, rather than mud, a second animal, or a saturated patch, dominates the crop. Let $\kappa(x)$ be the mean absolute Laplacian response of the luminance inside $R$, and let $\eta(x)$ be the fraction of pixels in $R$ whose luminance is below $0.05$ or above $0.95$. Using the 5th and 95th percentiles $\kappa_{5}$ and $\kappa_{95}$ of $\kappa$ on the training pool,
+\begin{equation}
+    C(x)
+    =
+    \operatorname{clip}_{[0,1]}
+    \!\left(
+        \frac{\kappa(x)-\kappa_{5}}{\kappa_{95}-\kappa_{5}}
+    \right)
+    \bigl(1-\eta(x)\bigr).
+    \label{eq:cleanliness}
+\end{equation}
+High contrast raises $C$. Saturated or nearly black patches, which do not carry a stable coat pattern, lower it.
+
+\textbf{Aerial viewpoint $A$.}
+The useful view in this task is a near-nadir view of the back. Let $\rho(x)$ be the width-to-height ratio of $R$, and let $\rho_{0}$ be the median of $\rho$ over training candidates whose visibility is at least the training-pool median. Let $\sigma(x)=|R|/|\operatorname{conv}(R)|$ be the solidity of the region. Then
+\begin{equation}
+    A(x)
+    =
+    \sigma(x)\,
+    \exp\!\left(
+        -\left|\log\frac{\rho(x)}{\rho_{0}}\right|
+    \right).
+    \label{eq:viewpoint}
+\end{equation}
+Extreme aspect ratios and fragmented regions, which occur for strong oblique views and for partial side views, reduce $A$.
+
+\textbf{Illumination quality $L$.}
+Let $\mu(x)$ and $\varsigma(x)$ be the mean and standard deviation of the luminance inside $R$, both in $[0,1]$ for the mean. Let $\varsigma_{95}$ be the 95th percentile of $\varsigma$ on the training pool. Mid-gray, low-variance illumination is preferred:
+\begin{equation}
+    L(x)
+    =
+    \operatorname{clip}_{[0,1]}\!\bigl(1-2|\mu(x)-0.5|\bigr)
+    \cdot
+    \operatorname{clip}_{[0,1]}\!\left(1-\frac{\varsigma(x)}{\varsigma_{95}}\right).
+    \label{eq:illumination}
+\end{equation}
+Underexposure, overexposure, and hard shadows inside the coat all reduce $L$.
+
+\textbf{Sharpness $S$.}
+Let $v(x)$ be the variance of the Laplacian inside $R$, and let $v_{5}$ and $v_{95}$ be its 5th and 95th training-pool percentiles. Motion blur and defocus decrease $v$. The normalized score is
+\begin{equation}
+    S(x)
+    =
+    \operatorname{clip}_{[0,1]}
+    \!\left(
+        \frac{v(x)-v_{5}}{v_{95}-v_{5}}
+    \right).
+    \label{eq:sharpness}
+\end{equation}
+
+\subsubsection{Scalar quality and the selection objective}
+\label{sec:objective}
+
+The farm-aware quality of a training candidate is the convex combination
+\begin{equation}
+    Q(x)
+    =
+    \alpha V(x)+\beta C(x)+\gamma A(x)+\delta L(x)+\epsilon S(x),
+    \label{eq:quality}
+\end{equation}
+with the constraint
+\begin{equation}
+    \alpha,\beta,\gamma,\delta,\epsilon \ge 0,
+    \qquad
+    \alpha+\beta+\gamma+\delta+\epsilon = 1.
+    \label{eq:simplex}
+\end{equation}
+Because every factor lies in $[0,1]$, the constraint forces $Q(x)\in[0,1]$. The five weights are not identity labels and are not estimated from the query set.
+
+For $N$ identities and a per-identity shot cap $m$, the selected support set retains, for each identity, the highest-quality candidates under that cap:
+\begin{equation}
+    D(N,m)
+    =
+    \bigl\{
+        x_{ij}
+        \mid
+        i=1,\ldots,N,\;
+        j=1,\ldots,m_{i}
+    \bigr\},
+    \qquad
+    m_{i}=\min(n_{i},m),
+    \label{eq:support-set}
+\end{equation}
+where $n_{i}$ is the number of training-pool candidates of identity $i$ that remain after the quality floor, and $x_{ij}$ is the candidate of rank $j$ when identity $i$ is sorted by $Q$ in descending order. Thus $|D(N,m)|=\sum_{i=1}^{N} m_{i}$, which equals $Nm$ only when every identity has at least $m$ qualified images. Tail identities are not duplicated to fill the cap.
+
+The selection objective trades validation ranking accuracy against the size and the mean quality of the support set:
+\begin{equation}
+    J(N,m)
+    =
+    \operatorname{Acc}\!\bigl(D(N,m)\bigr)
+    -\lambda \bigl|D(N,m)\bigr|
+    +\mu \,\overline{Q}\!\bigl(D(N,m)\bigr),
+    \label{eq:objective}
+\end{equation}
+where $\overline{Q}(D)$ is the mean of $Q$ over $D$, $\lambda>0$, and $\mu>0$. $\operatorname{Acc}$ is Rank-1 on the validation split, using prototypes built from $D(N,m)$. It is not Rank-1 on $\mathcal{Q}$. The operating point is
+\begin{equation}
+    (N^{\star},m^{\star})
+    =
+    \arg\max_{N,m}\; J(N,m).
+    \label{eq:argmax}
+\end{equation}
+Equation~\eqref{eq:argmax} uses the full objective \eqref{eq:objective}. Maximizing $\operatorname{Acc}$ alone is the special case $\lambda=\mu=0$, and that special case is not used, because it ignores the size and quality terms that define F-ODS.
+
+$N$ is not a device for removing difficult identities. An identity that has at least one query image stays in the evaluation universe. $N^{\star}$ counts identities that satisfy the coverage constraint: at least one qualified training candidate and at least one query image. The free variable that F-ODS actually selects on the validation split is the quality parameterization $(\alpha,\beta,\gamma,\delta,\epsilon,q_{\min},\lambda,\mu)$ together with the cap $m$. Here $q_{\min}$ is a floor on $Q$. Training candidates with $Q(x)<q_{\min}$ are removed from the support pool. Query images are not compared with $q_{\min}$.
+
+\subsubsection{Execution}
+\label{sec:fods-exec}
+
+F-ODS proceeds as follows.
+\begin{enumerate}
+    \item Freeze $\mathcal{Q}$. Remove those frames, and any frame used as their detection source, from every pool that F-ODS or self-training may read.
+    \item Carve the validation split from the remaining labeled frames. Fit percentile normalizers, $\rho_{0}$, and $\varsigma_{95}$ on the training pool with the validation frames held out of the normalizer fit.
+    \item Detect cattle and form the crop $I_{\mathrm{sam}}$, or $I_{\mathrm{box}}$ when that arm is being built.
+    \item Score $V,C,A,L,S$ and combine them into $Q$ by \eqref{eq:quality}.
+    \item Delete training candidates below $q_{\min}$. Do not delete query images.
+    \item Inside each identity, sort the surviving training candidates by decreasing $Q$.
+    \item For a shot setting $K$, the support set is the prefix of length $\min(n_{i},K)$ of that list. The reported settings are $K\in\{1,5,10\}$. They are nested prefixes of one frozen ranking, so changing $K$ does not refit $(\alpha,\ldots,\epsilon)$ on the queries. The cap searched by \eqref{eq:argmax} is required to satisfy $m^{\star}\ge 10$; otherwise $K=10$ is not claimed.
+    \item Train on $D(N,K)$ with the weighted loss \eqref{eq:ltotal}. Sample identities uniformly, and sample an image inside the chosen identity with probability proportional to its weight. Head identities therefore cannot fill a batch merely because they contributed more raw frames.
+    \item Evaluate every image in $\mathcal{Q}$ that belongs to an identity with a non-empty support prefix. Do not drop a query because its $Q$ is low, and do not weight the CMC by $Q$.
+\end{enumerate}
+
+The long-tailed UAV distribution is handled by the cap and by this identity-balanced sampler, not by copying rare images and not by deleting rare identities. A head identity contributes at most $K$ support images. A tail identity contributes every qualified image it has, up to $K$. The ablation ``without F-ODS'' keeps every training-pool image, sets every training weight to $1$, and still uses the frozen query set. The shot cap $K$ remains, so that ablation removes quality ranking and quality weighting rather than secretly changing the query definition.
+
+\subsection{Quality-Weighted ArcFace}
+\label{sec:arcface}
+
+Every branch uses the additive angular margin loss of Deng \emph{et al.}~\cite{deng2019arcface}. For an $\ell_2$-normalized embedding $z_{i}=\phi_{\theta}(x_{i})/\lVert\phi_{\theta}(x_{i})\rVert_{2}$ and $\ell_2$-normalized class weights, let $\theta_{y_{i}}$ be the angle between $z_{i}$ and the weight of the true class. With scale $s>0$ and margin $m_{\angle}>0$,
+\begin{equation}
+    \ell_{i}
+    =
+    -\log
+    \frac{
+        e^{s\cos(\theta_{y_{i}}+m_{\angle})}
+    }{
+        e^{s\cos(\theta_{y_{i}}+m_{\angle})}
+        +
+        \sum_{j\neq y_{i}} e^{s\cos\theta_{j}}
+    }.
+    \label{eq:arcface}
+\end{equation}
+The scale and the margin are shared constants. They are taken from the ArcFace formulation and are held fixed across YOLO-ReID, the pruned ViT, and the Wang \emph{et al.} branch. They are not a measured result of this dataset, and they are not retuned separately per branch.
+
+F-ODS enters the loss through $Q$. In a batch $\mathcal{B}$, the sample weight is the quality itself,
+\begin{equation}
+    w_{i}=Q(x_{i}),
+    \label{eq:weight}
+\end{equation}
+and the minimized objective is the weighted mean
+\begin{equation}
+    \mathcal{L}_{\mathrm{total}}
+    =
+    \frac{
+        \sum_{i\in\mathcal{B}} w_{i}\,\ell_{i}
+    }{
+        \sum_{i\in\mathcal{B}} w_{i}
+    }.
+    \label{eq:ltotal}
+\end{equation}
+Equation~\eqref{eq:ltotal} is the training loss for all three branches. If a weight sum is zero, which the floor $q_{\min}>0$ is chosen to avoid, that batch is skipped rather than replaced by an imputed number. Query evaluation does not use $w_{i}$. During dynamic self-training, an admitted unlabeled sample uses the same equation with $y_{i}$ replaced by its pseudo-label and $w_{i}$ still equal to its own $Q$.
+
+\subsection{Three Recognition Branches}
+\label{sec:branches}
+
+The input of every branch in the main comparison is $I_{\mathrm{sam}}$ after the shared detector and SAM. The training weights are the F-ODS weights of Section~\ref{sec:arcface}. The recognition head is \eqref{eq:arcface} during training and a cosine prototype comparison at test time.
+
+\textbf{YOLO-ReID.}
+The trunk is a YOLO-family convolutional backbone, followed by global pooling and a linear map to $\mathbb{R}^{d}$. This trunk is distinct from the detector. No structural pruning is applied. The branch is the convolutional baseline under the common loss and the common crop.
+
+\textbf{Pruned ViT.}
+This is the proposed recognizer. A Vision Transformer consumes the purified back-coat image. Attention heads and MLP channels are then removed by the task-specific rule in Section~\ref{sec:pruning}, and the surviving network is few-shot fine-tuned on $D(N,K)$ with $\mathcal{L}_{\mathrm{total}}$. The F-ODS weight of each support image is the $w_{i}$ in that fine-tuning loss.
+
+\textbf{Wang \emph{et al.} metric-learning baseline.}
+The embedding architecture follows the coat-pattern deep metric learning model of Wang \emph{et al.}~\cite{wang2025coatdml}. Their original mining objective is not reused. Substituting ArcFace is required for the loss to be the same function \eqref{eq:arcface} in every column of the comparison. Published figures from that work are results of a different training objective and are not numbers of this manuscript. The public code of that work is not copied into this repository.
+
+At inference, support embeddings of identity $y$ form the prototype
+\begin{equation}
+    p_{y}
+    =
+    \frac{
+        \sum_{x\in D_{y}} \phi_{\theta}(x)
+    }{
+        \left\lVert
+            \sum_{x\in D_{y}} \phi_{\theta}(x)
+        \right\rVert_{2}
+    },
+    \label{eq:prototype}
+\end{equation}
+where $D_{y}$ is the $K$-shot support of that identity. A query $q\in\mathcal{Q}$ is ranked by
+\begin{equation}
+    s(q,y)=\left\langle
+        \frac{\phi_{\theta}(q)}{\lVert\phi_{\theta}(q)\rVert_{2}},
+        p_{y}
+    \right\rangle.
+    \label{eq:cosine}
+\end{equation}
+The predicted identity is $\arg\max_{y} s(q,y)$. The same prototypes and the same cosine are used for all three branches.
+
+\subsection{Task-Specific Structured Pruning of the ViT}
+\label{sec:pruning}
+
+Generic structured pruning ranks heads or channels by the magnitude of their weights or by their effect on a closed-set classification loss. That criterion does not ask whether a unit keeps two images of the same animal together and images of different animals apart. Coat-pattern re-identification needs the latter. The proposed pruning score is computed from embedding geometry.
+
+Let $z=\phi_{\theta}(x)/\lVert\phi_{\theta}(x)\rVert_{2}$. On a calibration split taken from the training pool and disjoint from $\mathcal{Q}$, define the mean squared intra-identity and inter-identity distances
+\begin{align}
+    S_{\mathrm{intra}}(\phi)
+    &=
+    \frac{1}{|\mathcal{P}_{\mathrm{same}}|}
+    \sum_{(a,b)\in\mathcal{P}_{\mathrm{same}}}
+    \lVert z_{a}-z_{b}\rVert_{2}^{2},
+    \label{eq:intra}\\
+    S_{\mathrm{inter}}(\phi)
+    &=
+    \frac{1}{|\mathcal{P}_{\mathrm{diff}}|}
+    \sum_{(a,b)\in\mathcal{P}_{\mathrm{diff}}}
+    \lVert z_{a}-z_{b}\rVert_{2}^{2}.
+    \label{eq:inter}
+\end{align}
+The discriminability of a network is the ratio
+\begin{equation}
+    \Delta(\phi)
+    =
+    \frac{S_{\mathrm{inter}}(\phi)}{S_{\mathrm{intra}}(\phi)+\varepsilon},
+    \label{eq:discriminability}
+\end{equation}
+with $\varepsilon>0$ only to guard an empty within-identity scatter. For a structural unit $u$, write $\phi^{(-u)}$ for the same network with unit $u$ zeroed and with no other weight changed. The importance of that unit is the drop in discriminability,
+\begin{equation}
+    I(u)=\Delta(\phi)-\Delta\!\left(\phi^{(-u)}\right).
+    \label{eq:importance}
+\end{equation}
+A unit that carries identity information has large $I(u)$. A unit that can be removed without collapsing the intra-class cluster or the inter-class gap has small $I(u)$.
+
+The structural units are the attention heads, across all transformer blocks, and the hidden channels of the MLP in each block. Heads and channels are ranked separately by $I(u)$. For target removal rates $\rho_{h}$ and $\rho_{c}$, the lowest-ranked fraction $\rho_{h}$ of heads and the lowest-ranked fraction $\rho_{c}$ of MLP channels are removed. The ranking is computed once on the unpruned network. Every smaller rate is a prefix of that same ranking, so the rate sweep is nested and is not refit on $\mathcal{Q}$.
+
+After removal, the pruned transformer is fine-tuned on the F-ODS support set $D(N,K)$ by minimizing $\mathcal{L}_{\mathrm{total}}$. The ArcFace matrix is trained in this fine-tuning and is not part of the exported recognizer. YOLO-ReID and the Wang \emph{et al.} branch are not pruned. Their capacity is whatever their unpruned architectures specify, which is why parameter count and FLOPs are reported per branch rather than assumed equal.
+
+\subsection{Farm-Knowledge-Guided Self-Supervised Dynamic Learning}
+\label{sec:dynamic}
+
+This stage uses unlabeled UAV frames. The word ``self-supervised'' is used here in the self-training sense: the model proposes the identity label, and farm-aware image quality decides whether that proposal is admissible. The stage does not replace \eqref{eq:ltotal} by a contrastive pretext loss.
+
+\begin{enumerate}
+    \item Remove $\mathcal{Q}$, the support frames, and the validation frames from the unlabeled collection. Also remove any unlabeled frame whose source UAV image is the source of a query, support, or validation crop. The remaining set is $\mathcal{U}$.
+    \item Run the same YOLO detector and the same SAM back-region crop. The dynamic stage sees $I_{\mathrm{sam}}$, not a raw frame and not a different detector. The rectangular control is not mixed into this pool.
+    \item Compute $Q(x)$ for every unlabeled crop with the normalizers and the coefficients already frozen in Section~\ref{sec:fods}. Do not refit them on $\mathcal{U}$.
+    \item Embed each unlabeled crop with the current $\phi_{\theta}$ and compare it with the prototypes \eqref{eq:prototype}. The confidence and the pseudo-label are
+    \begin{equation}
+        c(x)=\max_{y}\, s(x,y),
+        \qquad
+        \hat{y}(x)=\arg\max_{y}\, s(x,y),
+        \label{eq:confidence}
+    \end{equation}
+    with $s$ defined by \eqref{eq:cosine}.
+    \item Admit $x\in\mathcal{U}$ into the training pool if and only if
+    \begin{equation}
+        c(x)\ge \tau_{c}
+        \quad\text{and}\quad
+        Q(x)\ge \tau_{q}.
+        \label{eq:admit}
+    \end{equation}
+    Both gates are chosen on the validation split before the query set is read. A frame that fails either gate is discarded. It is not given a soft label and it is not moved into $\mathcal{Q}$.
+    \item Append each admitted pair $\bigl(x,\hat{y}(x)\bigr)$ to the training pool with weight $w=Q(x)$. Minimize \eqref{eq:ltotal} for a fixed number of steps. This update touches the backbone currently being trained. It does not edit the other branches unless that same procedure is run for them as its own ablation.
+    \item Every $R$ update rounds, re-embed $\mathcal{U}$ with the updated backbone, recompute \eqref{eq:confidence}, and rebuild the admitted set from scratch by \eqref{eq:admit}. A frame that was admitted and later falls below either gate leaves the training pool. The support prototypes are recomputed from the labeled support set only, so an erroneous pseudo-label cannot move the prototype that is used to judge the next round.
+    \item After the last round, evaluate $\mathcal{Q}$ once. No frame that entered through \eqref{eq:admit} is eligible to be a query, a gallery image, or a prototype component.
+\end{enumerate}
+
+The two gates have different roles. Confidence $c(x)$ rejects embeddings that resemble no labeled identity or that resemble several identities at once. Quality $Q(x)$ rejects frames that the farm-aware score considers poorly visible, dirty, oblique, badly lit, or blurred, even if the current model happens to be sure about them. Using either gate alone is not the method.
+
+Leakage is prevented by set construction rather than by a post-hoc check of the accuracy. $\mathcal{Q}$ is removed before Step~1 and is not an output of Step~5. Pseudo-labels do not participate in prototype \eqref{eq:prototype} during the admission test. The CMC therefore remains an evaluation of the frozen query distribution.
+
+\subsection{Inference}
+\label{sec:inference}
+
+Given a new UAV frame, the detector proposes boxes, SAM produces $M$, and \eqref{eq:sam-crop} produces the crop. The crop is embedded by the selected branch. Cosine scores against the labeled prototypes give the identity ranking. No F-ODS weight and no pseudo-label is computed for this decision. If the rectangular control model is the one under test, \eqref{eq:box-crop} replaces \eqref{eq:sam-crop} and SAM is not called.
+
+\section{Experimental Protocol}
+\label{sec:protocol}
+
+This section specifies the measurements required for the manuscript. It reports no Rank-1, Rank-5, parameter count, FLOP count, or latency. Empty cells in a later camera-ready table are measurements still to be made. They must not be replaced by figures from Wang \emph{et al.} or by any other external cattle-identification paper.
+
+\subsection{Data, Split, and Fairness Constraints}
+\label{sec:data-protocol}
+
+The image source is the public UAV cattle archive associated with Wang \emph{et al.}~\cite{wang2024uavlidar,wang2025coatdml}. This draft does not restate that archive's published identification figures and does not treat them as results of the three-branch protocol.
+
+The labeled frames are partitioned into a training pool, a validation split, and a query set $\mathcal{Q}$. The partition is by source frame, so a query crop and a support crop are not two views exported from the same detection. F-ODS and self-training may modify only the training pool. Validation is used to freeze $(\alpha,\beta,\gamma,\delta,\epsilon)$, $q_{\min}$, $\lambda$, $\mu$, $\tau_{c}$, $\tau_{q}$, and the pruning ranking. The query set is used once, after those choices are frozen.
+
+For every backbone, the main comparison uses $I_{\mathrm{sam}}$, $\mathcal{L}_{\mathrm{total}}$, the common $(s,m_{\angle},d)$, and the same $K$-shot prefixes. The optimizer family, the epoch budget, and the learning rate are also shared across the three branches. They are fixed before the query evaluation and are not reported here as a tuned outcome.
+
+\subsection{Few-Shot Protocol and Metrics}
+\label{sec:metrics}
+
+The shot settings are
+\begin{equation}
+    K\in\{1,5,10\}.
+    \label{eq:kshot}
+\end{equation}
+For each $K$, identity $i$ contributes the $\min(n_{i},K)$ highest-$Q$ training images under the single F-ODS ranking. An identity with no qualified support image is not given a fabricated prototype. The number of such identities, if any, is a data-accounting quantity to be stated with the table, not an accuracy. All query images of the remaining identities are scored. They are not subsampled by $Q$.
+
+Rank-$k$ is the fraction of query images for which the true identity is among the $k$ prototypes with the largest cosine \eqref{eq:cosine}. The manuscript reports Rank-1 and Rank-5. Because a $K$-shot prefix of a tail identity can be shorter than $K$, the prototype definition \eqref{eq:prototype} already accepts a shorter support. No image is repeated to force exactly $K$ vectors.
+
+Because the validation search and the normalizer fit are themselves stochastic only insofar as the split is random, the split is fixed and then all three branches and all ablations share it. Repeated draws are not averaged into an unreported variance in this draft. If repeated support draws are added later, the repetition count has to be chosen before the query metrics are inspected, and the mean and the dispersion are both reported.
+
+Efficiency is measured on the inference function $\phi_{\theta}$, not on the ArcFace matrix and not on the detector. The detector and SAM are shared preprocessing. Their cost may be reported as a separate line, identical for every recognizer, but it is not added unequally to one branch.
+\begin{itemize}
+    \item \textbf{Parameters.} The number of trainable parameters in $\phi_{\theta}$ after pruning, when pruning applies.
+    \item \textbf{FLOPs.} The multiply--accumulate count of one forward pass of $\phi_{\theta}$ at the common input resolution.
+    \item \textbf{Latency.} The single-image wall-clock time of one forward pass of $\phi_{\theta}$ at batch size $1$, on one stated device, after a fixed warmup, summarized by the median of a fixed number of timed calls. Data loading, detection, and SAM are excluded from this recognizer latency and, if measured, are given their own lines.
+\end{itemize}
+No device name, warmup length, or millisecond value is asserted in this draft.
+
+The SAM question for one backbone is the difference of two Rank-1 fractions measured on paired crops of the same frames,
+\begin{equation}
+    \Delta_{\mathrm{SAM}}
+    =
+    \operatorname{Rank\mbox{-}1}(I_{\mathrm{sam}})
+    -
+    \operatorname{Rank\mbox{-}1}(I_{\mathrm{box}}).
+    \label{eq:delta-sam}
+\end{equation}
+A positive value means the mask raised Rank-1. The sign is an outcome, not an assumption. The same difference can be formed for Rank-5. It is not formed for parameters or FLOPs, which do not depend on the crop when the resolution is unchanged.
+
+\subsection{Main Comparison}
+\label{sec:main-table}
+
+The primary table has one row for each of the following systems, at each $K\in\{1,5,10\}$, all on $I_{\mathrm{sam}}$ and all before dynamic self-training.
+\begin{itemize}
+    \item YOLO-ReID, the unpruned convolutional trunk with ArcFace.
+    \item The proposed pruned ViT with task-specific head and channel pruning, F-ODS weights, and ArcFace.
+    \item The Wang \emph{et al.} embedding architecture trained with ArcFace instead of its original mining loss.
+\end{itemize}
+The columns are Rank-1, Rank-5, parameters, FLOPs, and single-image latency. This draft leaves those columns empty.
+
+\subsection{Required Ablations}
+\label{sec:ablations}
+
+Each ablation changes one factor. The query set, the identity coverage constraint, the ArcFace hyperparameters, and the input resolution stay fixed unless the factor under test is the crop.
+
+\textbf{F-ODS.}
+Compare $\mathcal{L}_{\mathrm{total}}$ on the quality-ranked, quality-weighted support set with the same branch trained on the unfiltered training pool using $w_{i}=1$. Do this for the proposed ViT. Report Rank-1 and Rank-5 at each $K$. The query images are identical, including low-quality queries.
+
+\textbf{SAM mask against the YOLO box.}
+For each of the three branches, train one model on $I_{\mathrm{sam}}$ and one model on the paired $I_{\mathrm{box}}$. The support frame identities, the $K$-shot frame indices, and the scalar weights $w_{i}$ are those chosen on the SAM arm. The rectangular arm therefore changes the pixels and does not receive a second selection or a second set of loss weights. Report Rank-1 and Rank-5, and report $\Delta_{\mathrm{SAM}}$ from \eqref{eq:delta-sam}. This is the $2\times 3$ comparison: two crops by three backbones.
+
+\textbf{Pruning rate.}
+On the proposed ViT only, sweep the nested rates $(\rho_{h},\rho_{c})$ over a grid fixed before the query evaluation. The unpruned transformer, $(\rho_{h},\rho_{c})=(0,0)$, is the origin of that grid. For each grid point report Rank-1 at the same $K$ and the FLOPs of $\phi_{\theta}$. The manuscript plots Rank-1 against FLOPs. It does not declare a winning rate in this draft, because no query measurement has been made. Parameters and latency may be added to the same plot as secondary axes. They are not substituted for FLOPs.
+
+\textbf{Dynamic self-training.}
+On the proposed ViT, compare the model stopped at the supervised F-ODS stage with the model that continues through Section~\ref{sec:dynamic}. The labeled support set, the gates' selection split, and $\mathcal{Q}$ are the same. Report Rank-1 and Rank-5. If the same unlabeled pool and the same gates are later applied to YOLO-ReID or to the Wang \emph{et al.} branch, those runs are a separate table. They are not mixed into the primary backbone comparison.
+
+\subsection{Accounting Checks Before Any Table Is Filled}
+\label{sec:checks}
+
+The following conditions are part of the protocol and can be checked without quoting an accuracy.
+\begin{itemize}
+    \item No query frame is an input to F-ODS normalizer fitting, to the argmax in \eqref{eq:argmax}, to $I(u)$, or to the gates $\tau_{c}$ and $\tau_{q}$.
+    \item No pseudo-labeled frame is a member of $\mathcal{Q}$, of the gallery, or of a prototype.
+    \item The three main-table branches use one implementation of \eqref{eq:arcface} and one pair $(s,m_{\angle})$.
+    \item The SAM and box arms of a paired comparison differ in the crop operator and not in the list of source frames.
+    \item Parameter and FLOP counts exclude the ArcFace class-weight matrix.
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{deng2019arcface}
+J.~Deng, J.~Guo, N.~Xue, and S.~Zafeiriou,
+``ArcFace: Additive angular margin loss for deep face recognition,''
+in \emph{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit.}, 2019, pp.~4690--4699.
+
+\bibitem{wang2024uavlidar}
+Y.~Wang,
+``Dataset for cattle growth monitoring in PLF using UAV-based LiDAR,''
+Zenodo, 2024, doi: 10.5281/zenodo.13364663.
+
+\bibitem{wang2025coatdml}
+Y.~Wang, C.~A.~M\"ucher, K.~Wang, W.~Wang, and L.~Kooistra,
+``Deep metric learning for individual cattle identification using coat patterns: Proposal for a best practice,''
+\emph{Comput. Electron. Agric.}, 2025, doi: 10.1016/j.compag.2025.110754.
+\end{thebibliography}
