@@ -22,3 +22,19 @@ references:
     doi: 10.5281/zenodo.13364663
     url: "https://zenodo.org/records/13364663"
     license: CC-BY-4.0
+  - type: article
+    title: "Deep metric learning for individual cattle identification using coat patterns: Proposal for a best practice"
+    authors:
+      - family-names: Wang
+        given-names: Yaowu
+      - family-names: "Mücher"
+        given-names: "C. A."
+      - family-names: Wang
+        given-names: Kaiwen
+      - family-names: Wang
+        given-names: Wensheng
+      - family-names: Kooistra
+        given-names: Lammert
+    year: 2025
+    doi: 10.1016/j.compag.2025.110754
+    url: "https://doi.org/10.1016/j.compag.2025.110754"
