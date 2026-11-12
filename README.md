@@ -6,40 +6,57 @@
 
 **Tianyi Ma**, Zhengzhou University · [ORCID 0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · [GitHub @tianyi-star](https://github.com/tianyi-star)
 
-Mutong (牧瞳) compares three models that identify individual cattle from UAV images of the back coat pattern. YOLO detection and SAM mask cropping are shared, so every model sees the same purified pattern image. All three are trained with one ArcFace loss and scored with one protocol: Rank-1, Rank-5, parameter count, and FLOPs.
+Mutong (牧瞳) compares three identification models on UAV images of the cattle back coat. The models share the path in the figure below: one detector, one SAM crop, one balanced set, and one few-shot protocol. The metric head on every model is ArcFace.
 
 This repository is the public skeleton. It keeps the interfaces, the path file, and the entry scripts. The image archive, the checkpoints, and the training and measurement code stay on the private Ubuntu server. No recognition figure is stored here.
 
 ```mermaid
 flowchart TD
-    uav[UAV images] --> det[YOLO detection]
-    det --> sam[SAM mask crop]
-    sam --> pattern[Purified back-pattern images]
-    pattern --> cnn[YOLO backbone plus ArcFace]
-    pattern --> vit[Pruned ViT plus ArcFace]
-    pattern --> wang[Wang metric baseline plus ArcFace]
-    cnn --> protocol["Rank-1, Rank-5, parameters, FLOPs"]
-    vit --> protocol
-    wang --> protocol
-    det -.-> bbox[Reserved YOLO bbox crop]
-    bbox -.-> protocol
+    A[UAV Images] --> B["YOLO detector: output cattle bbox"]
+    B --> C["SAM: mask & crop cattle back region"]
+    C --> D[Pure coat pattern image]
+    D --> E[F-ODS balanced dataset]
+    E --> F[Few-shot evaluation protocol]
+    F --> G["Method1: YOLO backbone + metric head"]
+    F --> H["Method2: Pruned ViT + metric head"]
+    F --> I["Method3: Yaowu Wang Metric Learning"]
+    G & H & I --> J["Rank-1 / Rank-5 evaluation"]
 ```
 
-The solid path is the comparison. The dotted path is a reserved control: crop the original frame with the YOLO box and skip SAM. That control is named in the scripts and is not part of the three-model table.
+YOLO returns a cattle box. SAM builds a mask from that box and crops the back region, which is the pure coat-pattern image used from that point on. F-ODS then builds the balanced identity set those three methods share. The few-shot protocol fixes the same `train`, `gallery`, and `query` rows for every method. Rank-1 and Rank-5 are the fraction of query images whose identity appears among the nearest gallery identities. The same runs also record parameter count and FLOPs. A YOLO-box crop that skips SAM remains available as a reserved control in the scripts. It is outside this figure and outside the three-method table.
 
 ## Models
 
-| Name | Role | Training loss |
+| Figure | Name | Role |
 | --- | --- | --- |
-| `yolo_arcface` | CNN baseline. YOLO backbone, ArcFace head. | ArcFace |
-| `pruned_vit_arcface` | Proposed model. Pruned Vision Transformer, ArcFace head. | ArcFace |
-| `wang_metric` | Metric-learning baseline following Wang et al. (2025), retrained with the shared ArcFace head. | ArcFace |
+| Method1 | `yolo_arcface` | CNN baseline. YOLO backbone and the shared ArcFace metric head. |
+| Method2 | `pruned_vit_arcface` | Proposed model. Pruned Vision Transformer and the shared ArcFace metric head. |
+| Method3 | `wang_metric` | Metric-learning baseline following Wang et al. (2025), trained with the same ArcFace metric head. |
 
-Wang, Mücher, Wang, Wang, and Kooistra, [Deep metric learning for individual cattle identification using coat patterns](https://doi.org/10.1016/j.compag.2025.110754), Computers and Electronics in Agriculture, 2025. Their released training code is the Zenodo record [10.5281/zenodo.13361729](https://doi.org/10.5281/zenodo.13361729). This repository does not vendor that code. The third model keeps their backbone as the baseline and trains it with the same ArcFace loss as the other two, so the loss is not a difference between rows. Figures reported in that paper are not results of this repository.
+Wang, Mücher, Wang, Wang, and Kooistra, [Deep metric learning for individual cattle identification using coat patterns](https://doi.org/10.1016/j.compag.2025.110754), Computers and Electronics in Agriculture, 2025. Their released training code is the Zenodo record [10.5281/zenodo.13361729](https://doi.org/10.5281/zenodo.13361729). This repository does not vendor that code. Method3 keeps their backbone as the baseline and trains it with ArcFace, so the loss is not a difference between the three methods. Figures reported in that paper are not results of this repository.
 
-ArcFace is the additive angular margin loss of Deng, Guo, Xue, and Zafeiriou, CVPR 2019. The scale, margin, embedding size, and image size live in [`configs/experiment.yaml`](configs/experiment.yaml). A change to any of those values applies to all three models.
+## ArcFace
 
-At retrieval time each network returns an L2-normalized embedding. Rank-k is the fraction of query images whose identity is among the k nearest gallery identities under cosine distance. Parameters and FLOPs are counted on that inference network at the shared image size. The ArcFace class-weight matrix is left out of both counts, because its width follows the number of training identities.
+ArcFace is the additive angular margin loss of Deng, Guo, Xue, and Zafeiriou, [ArcFace: Additive Angular Margin Loss for Deep Face Recognition](https://doi.org/10.1109/CVPR.2019.00482), CVPR 2019. In this project it is the metric head drawn on Method1, Method2, and Method3. The three backbones differ. The head does not.
+
+A backbone maps one coat-pattern image to an embedding. During training, that embedding and the rows of the class-weight matrix are L2-normalized. Their dot product is then the cosine of the angle between the sample and a class center. ArcFace adds a margin to the angle of the true identity, scales every cosine, and applies cross-entropy:
+
+```text
+target logit   = s * cos(theta_y + m)
+other logits   = s * cos(theta_j),  j != y
+```
+
+`s` is the scale and `m` is the angular margin in radians. The margin makes the true class occupy a tighter cone on the hypersphere and pushes other identities away. That is the geometry used at test time: the class-weight matrix is dropped, each network returns an L2-normalized embedding, and Rank-1 / Rank-5 rank the gallery by cosine distance.
+
+The shared values live in [`configs/experiment.yaml`](configs/experiment.yaml). They are the common training settings, not a measured result. Changing one of them means retraining all three methods.
+
+| Symbol | Config key | Value in the public file |
+| --- | --- | --- |
+| `s` | `arcface_scale` | 64.0 |
+| `m` | `arcface_margin` | 0.5 |
+| embedding size | `embedding_dim` | 512 |
+
+Parameter count and FLOPs are taken on the inference embedding network at the shared image size. The ArcFace class-weight matrix is left out of both counts, because its width follows the number of training identities. The public class is `ArcFaceHead` in [`src/arcface.py`](src/arcface.py). Its `forward` is implemented on the private server.
 
 ## Data description
 
@@ -210,6 +227,17 @@ Tianyi Ma, Zhengzhou University. ORCID: [0000-0003-1167-621X](https://orcid.org/
   organization = {Zhengzhou University},
   url          = {https://github.com/tianyi-star/2d_cattle},
   license      = {Apache-2.0}
+}
+```
+
+```bibtex
+@inproceedings{deng2019arcface,
+  author    = {Deng, Jiankang and Guo, Jia and Xue, Niannan and Zafeiriou, Stefanos},
+  title     = {ArcFace: Additive Angular Margin Loss for Deep Face Recognition},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year      = {2019},
+  doi       = {10.1109/CVPR.2019.00482},
+  url       = {https://doi.org/10.1109/CVPR.2019.00482}
 }
 ```
 
