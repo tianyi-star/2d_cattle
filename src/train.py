@@ -1,11 +1,12 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
 # SPDX-License-Identifier: Apache-2.0
-"""Train one identification model with the shared ArcFace loss.
+"""Train one cell of the 2 by 3 ablation with the shared ArcFace loss.
 
-The three public names are ``yolo_arcface``, ``pruned_vit_arcface``, and
-``wang_metric``. They read one manifest of SAM-purified back-pattern images,
-one image size, and one ArcFace scale and margin. The optimisation loop itself
-is on the private Ubuntu server.
+The three public names are ``yolo_arcface`` (YOLO-ReID), ``pruned_vit_arcface``
+(Pruned ViT), and ``wang_metric`` (Yaowu Wang). Each name is trained twice:
+once on the SAM-purified manifest and once on the YOLO-box manifest. Both runs
+use one image size and one ArcFace scale and margin. The optimisation loop
+itself is on the private Ubuntu server.
 
 Rows with ``split=train`` are the training rows. Gallery and query rows stay
 in the manifest so evaluation can use the same file.
@@ -18,22 +19,19 @@ import sys
 
 from src.config import load_yaml, require_shared_config
 from src.models import build_model
-from src.protocol import COMPARISON_CROP, CROP_BBOX, CROP_MODES, MODEL_NAMES, stop_private, stop_reserved_bbox
+from src.protocol import CROP_MODES, CROP_SAM, DISPLAY_NAMES, MODEL_NAMES, require_crop, stop_private
 
 
 def run_training(model_name: str, manifest: str, config_path: str, output_dir: str, crop: str) -> None:
-    """Check the shared contract, then hand the run to the private server."""
+    """Check the shared contract, then hand one ablation cell to the private server."""
 
-    if crop == CROP_BBOX:
-        stop_reserved_bbox()
-    if crop != COMPARISON_CROP:
-        raise ValueError(f"crop must be one of: {', '.join(CROP_MODES)}")
+    crop = require_crop(crop)
     if not manifest or not output_dir:
         raise ValueError("manifest and output_dir are required. Pass them from configs/path.yaml.")
     config = load_yaml(config_path)
     require_shared_config(config)
     model = build_model(model_name, config)
-    stop_private(f"ArcFace training for {model.name}")
+    stop_private(f"ArcFace training for {DISPLAY_NAMES[model.name]} on the {crop} crop")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,14 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Shared ArcFace training entry. The loop runs on the private Ubuntu server."
     )
     parser.add_argument("--model", required=True, choices=MODEL_NAMES)
-    parser.add_argument("--manifest", required=True, help="SAM pattern manifest for the comparison.")
+    parser.add_argument("--manifest", required=True, help="Manifest for the selected crop.")
     parser.add_argument("--config", required=True, help="Shared experiment YAML. Paths stay outside this file.")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
         "--crop",
-        default=COMPARISON_CROP,
+        default=CROP_SAM,
         choices=CROP_MODES,
-        help="sam trains the published comparison. bbox is reserved.",
+        help="sam uses the purified back pattern. bbox uses the YOLO box crop of the original frame.",
     )
     return parser
 

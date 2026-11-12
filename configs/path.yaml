@@ -6,6 +6,7 @@ raw_image_dir: data/raw
 manifest: data/manifest.csv
 pattern_dir: data/patterns
 pattern_manifest: data/pattern_manifest.csv
+# No-SAM arm: the original frame cropped by the YOLO box.
 bbox_crop_dir: data/bbox_crops
 bbox_manifest: data/bbox_manifest.csv
 output_dir: outputs

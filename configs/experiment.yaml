@@ -9,11 +9,14 @@ batch_size: 8
 epochs: 1
 learning_rate: 0.0001
 embedding_dim: 512
-# ArcFace scale and angular margin, shared by every model.
+# ArcFace scale and angular margin, shared by every cell of the 2 by 3 ablation.
 arcface_scale: 64.0
 arcface_margin: 0.5
-# Comparison input. The reserved no-SAM control uses the bbox crop mode instead.
-crop: sam
+# sam masks the back pattern. bbox crops the original frame with the YOLO box and skips SAM.
+# The CLI selects one cell. Both crops use the settings above.
+crops:
+  - sam
+  - bbox
 yolo_backbone: null
 vit_name: null
 vit_prune_ratio: null

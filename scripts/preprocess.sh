@@ -1,7 +1,7 @@
 #!/bin/sh
-# YOLO detection and SAM back-pattern crop.
+# YOLO detection, then one crop of the 2 by 3 ablation.
 # Usage: scripts/preprocess.sh [sam|bbox]
-# sam is the shared comparison input. bbox is reserved and stops before any crop.
+# sam masks the back pattern. bbox crops the original frame and skips SAM.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "${ROOT}/scripts/lib.sh"
