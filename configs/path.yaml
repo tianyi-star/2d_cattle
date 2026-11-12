@@ -1,6 +1,7 @@
 # Local data locations. Paths are relative to the repository root unless absolute.
-# Point these at the private Ubuntu server. This file does not name a machine
-# and it does not download the Zenodo archive or any checkpoint.
+# Point these at the private Ubuntu server. For already background-removed cattle
+# folders (96 identities as READY/<id>/*.png), run:
+#   sh scripts/prepare_ready.sh /path/to/READY sam
 
 raw_image_dir: data/raw
 manifest: data/manifest.csv

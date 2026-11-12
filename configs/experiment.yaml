@@ -1,23 +1,26 @@
 # Shared training and evaluation settings for the three identification models.
 # Change a value only when all three models will be retrained with it.
-# Architecture names and the ViT prune rate are selected on the private server.
 # This file records no measured recognition figures and no filesystem paths.
 
 seed: 0
 image_size: 224
 batch_size: 8
-epochs: 1
+epochs: 30
 learning_rate: 0.0001
+weight_decay: 0.0001
+num_workers: 2
 embedding_dim: 512
 # ArcFace scale and angular margin, shared by every cell of the 2 by 3 ablation.
 arcface_scale: 64.0
 arcface_margin: 0.5
 # sam masks the back pattern. bbox crops the original frame with the YOLO box and skips SAM.
-# The CLI selects one cell. Both crops use the settings above.
 crops:
   - sam
   - bbox
-yolo_backbone: null
-vit_name: null
-vit_prune_ratio: null
-wang_backbone: null
+# YOLO-ReID trunk: csp_small (built-in) or resnet18.
+yolo_backbone: csp_small
+# Pruned ViT settings.
+vit_name: vit_tiny_patch16_224
+vit_prune_ratio: 0.25
+# Wang et al. coat-pattern baseline backbone.
+wang_backbone: resnet50
