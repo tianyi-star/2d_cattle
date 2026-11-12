@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rank-1, Rank-5, parameter count, and FLOPs for one trained model.
+# Rank-1, Rank-5, parameter count, and FLOPs for one cell of the SAM ablation.
 # Usage: scripts/evaluate.sh {yolo_arcface|pruned_vit_arcface|wang_metric} [sam|bbox]
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

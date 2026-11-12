@@ -1,5 +1,5 @@
 #!/bin/sh
-# Train one model with the shared ArcFace loss.
+# Train one cell of the 2 by 3 ablation with the shared ArcFace loss.
 # Usage: scripts/train.sh {yolo_arcface|pruned_vit_arcface|wang_metric} [sam|bbox]
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

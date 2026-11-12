@@ -1,15 +1,21 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
 # SPDX-License-Identifier: Apache-2.0
-"""Shared comparison contract for the three identification models.
+"""Shared comparison contract for the 2 by 3 identification ablation.
 
-The public repository records the protocol. It does not store images,
-checkpoints, or measured recognition figures. The private Ubuntu server
-implements the steps named here.
+Two crops and three backbones form six cells. The public repository records
+the protocol. It does not store images, checkpoints, or measured recognition
+figures. The private Ubuntu server implements the steps named here.
 """
 
 from __future__ import annotations
 
 MODEL_NAMES = ("yolo_arcface", "pruned_vit_arcface", "wang_metric")
+
+DISPLAY_NAMES = {
+    "yolo_arcface": "YOLO-ReID",
+    "pruned_vit_arcface": "Pruned ViT",
+    "wang_metric": "Yaowu Wang",
+}
 
 MODEL_ROLES = {
     "yolo_arcface": "CNN baseline: a YOLO backbone with the shared ArcFace head.",
@@ -24,7 +30,21 @@ MODEL_ROLES = {
 CROP_SAM = "sam"
 CROP_BBOX = "bbox"
 CROP_MODES = (CROP_SAM, CROP_BBOX)
-COMPARISON_CROP = CROP_SAM
+
+CROP_ROLES = {
+    CROP_SAM: (
+        "SAM mask crop of the cattle back. Background, shadow, and legs fall outside the mask."
+    ),
+    CROP_BBOX: (
+        "YOLO bounding-box crop of the original frame. SAM is not applied, "
+        "so background, shadow, and legs can remain inside the crop."
+    ),
+}
+
+SAM_ABLATION_QUESTION = (
+    "How much does a SAM mask that removes background, shadow, and legs "
+    "raise Rank-1 for cattle back-coat re-identification?"
+)
 
 # Retrieval ranks plus the two cost figures. No other score belongs in the comparison table.
 METRIC_NAMES = ("rank1", "rank5", "parameters", "flops")
@@ -45,11 +65,6 @@ PRIVATE_SERVER = (
     "This repository only keeps the interface."
 )
 
-RESERVED_BBOX = (
-    "The YOLO bounding-box crop is a reserved control. It skips SAM and is not "
-    "part of the three-model comparison. The private server can add it later."
-)
-
 
 def stop_private(step: str) -> None:
     """Mark a step whose body is intentionally absent from the public tree."""
@@ -57,7 +72,16 @@ def stop_private(step: str) -> None:
     raise NotImplementedError(f"{step}. {PRIVATE_SERVER}")
 
 
-def stop_reserved_bbox() -> None:
-    """Mark the unused no-SAM control. It is wired, not implemented."""
+def require_crop(crop: str) -> str:
+    """Accept either arm of the ablation. Neither crop is optional."""
 
-    raise NotImplementedError(RESERVED_BBOX)
+    if crop not in CROP_MODES:
+        joined = ", ".join(CROP_MODES)
+        raise ValueError(f"crop must be one of: {joined}")
+    return crop
+
+
+def comparison_cells() -> tuple[tuple[str, str], ...]:
+    """Return the six cells as ``(crop, model)`` pairs, SAM row first."""
+
+    return tuple((crop, model) for crop in CROP_MODES for model in MODEL_NAMES)
