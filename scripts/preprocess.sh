@@ -23,6 +23,15 @@ case "${crop}" in
 esac
 
 cd "${ROOT}"
+if [ -n "${READY_DIR:-}" ]; then
+  python3 -m src.preprocess \
+    --ready-dir "${READY_DIR}" \
+    --output-dir "${out_dir}" \
+    --output-manifest "${out_manifest}" \
+    --crop "${crop}"
+  exit 0
+fi
+
 python3 -m src.preprocess \
   --image-dir "$(require_key raw_image_dir)" \
   --manifest "$(require_key manifest)" \

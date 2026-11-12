@@ -175,6 +175,31 @@ python3 -m src.train --help
 python3 -m src.evaluate --help
 ```
 
+## Background-removed 96-cattle experiment
+
+If the private server already has background-removed coat images for 96 identities
+as `READY/<identity_id>/*.png`, build the SAM-arm manifest and train all three
+models:
+
+```bash
+# Point path.yaml config at the shared experiment file (default) or the CPU smoke file.
+sh scripts/prepare_ready.sh /path/to/READY sam
+sh scripts/run_experiment.sh sam
+```
+
+The three cells are YOLO-ReID (`yolo_arcface`), Pruned ViT (`pruned_vit_arcface`),
+and Yaowu Wang metric learning (`wang_metric`), all under the shared ArcFace loss.
+Results are written to `outputs/*/metrics.json` and `outputs/summary_sam.json`.
+
+To exercise the pipeline without the private archive:
+
+```bash
+python3 -m src.make_synthetic --output-dir data/ready_bg_removed --num-identities 96
+# temporarily set config: configs/experiment_cpu.yaml in path.yaml for CPU boxes
+sh scripts/prepare_ready.sh data/ready_bg_removed sam
+sh scripts/run_experiment.sh sam
+```
+
 ## Commands
 
 The scripts read `configs/path.yaml` and `configs/experiment.yaml`. They stop at the public interface. Detection, SAM prompting, the YOLO-box crop, pruning, the ArcFace optimisation loop, and the measurements are implemented on the private server.
