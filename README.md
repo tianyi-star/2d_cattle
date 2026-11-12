@@ -31,7 +31,7 @@ flowchart TD
     R --> H2[Pruned ViT]
     R --> I2[Wang et al. baseline]
 
-    subgraph EVAL["Paired evaluation per backbone"]
+    subgraph EVAL["Evaluation"]
         direction TB
         J["Cosine retrieval on I_sam → Rank-1 / Rank-5"]
         K["Cosine retrieval on I_box → Rank-1 / Rank-5"]
