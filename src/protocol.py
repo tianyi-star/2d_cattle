@@ -46,6 +46,17 @@ SAM_ABLATION_QUESTION = (
     "raise Rank-1 for cattle back-coat re-identification?"
 )
 
+# Negative Δ_SAM is a valid experimental outcome. It arises when residual scene
+# context in the YOLO box is identity-correlated (pen floor, feeder, resting
+# spot) and the model uses that shortcut. The purified coat crop then loses the
+# cue, so Rank-1(bbox) can exceed Rank-1(sam). Report the sign; do not assume
+# that background removal always helps.
+CONTEXT_SHORTCUT_NOTE = (
+    "A negative Δ_SAM indicates that the bbox arm beat the SAM arm. "
+    "Under identity-linked scene context this is shortcut learning, "
+    "not evidence that background is a superior biometric to the coat."
+)
+
 # Retrieval ranks plus the two cost figures. No other score belongs in the comparison table.
 METRIC_NAMES = ("rank1", "rank5", "parameters", "flops")
 

@@ -1,0 +1,22 @@
+# Controlled ablation where identity-linked scene context remains in the bbox arm.
+# Coat cues are weak by construction; the bbox arm is therefore expected to beat
+# the SAM arm (negative Δ_SAM). Use for shortcut-learning analysis, not as the
+# default biometric protocol.
+
+seed: 0
+image_size: 224
+batch_size: 16
+epochs: 8
+learning_rate: 0.0003
+weight_decay: 0.0001
+num_workers: 0
+embedding_dim: 128
+arcface_scale: 32.0
+arcface_margin: 0.5
+crops:
+  - sam
+  - bbox
+yolo_backbone: csp_small
+vit_name: vit_tiny_patch16_224
+vit_prune_ratio: 0.25
+wang_backbone: resnet18

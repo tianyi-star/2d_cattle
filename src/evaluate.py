@@ -41,7 +41,13 @@ def metric_names() -> tuple[str, ...]:
 
 
 def rank1_gain(rank1_with_sam: float, rank1_without_sam: float) -> float:
-    """Return the Rank-1 change caused by using the SAM crop instead of the YOLO box."""
+    """Return Rank-1(sam) − Rank-1(bbox) for one backbone.
+
+    A positive value means the SAM mask raised Rank-1. A negative value means
+    the YOLO-box crop with residual background won — expected when scene
+    context is identity-linked (shortcut learning), not when the coat alone is
+    the intended biometric.
+    """
 
     _require_rate("rank1_with_sam", rank1_with_sam)
     _require_rate("rank1_without_sam", rank1_without_sam)

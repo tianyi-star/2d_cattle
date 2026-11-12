@@ -56,7 +56,19 @@ Formally, for a fixed backbone the gain is defined as
 
 $$\Delta_{\mathrm{SAM}}=\mathrm{Rank\text{-}1}(I_{\mathrm{sam}})-\mathrm{Rank\text{-}1}(I_{\mathrm{box}}).$$
 
-A positive value indicates that the mask raises Rank-1. The public implementation of this difference is `rank1_gain` in [`src/evaluate.py`](src/evaluate.py).
+A positive value indicates that the mask raises Rank-1. A negative value is equally admissible: it means the YOLO-box crop with residual background outperformed the purified coat. That outcome is expected when scene context (pen floor, feeder, habitual resting spot) is stable per identity and the recogniser uses it as a shortcut. In that regime higher accuracy *with* background does not imply a better biometric; it implies leakage of non-coat cues. The public implementation of the difference is `rank1_gain` in [`src/evaluate.py`](src/evaluate.py).
+
+### Context-shortcut ablation (negative $\Delta_{\mathrm{SAM}}$)
+
+To study the counter-intuitive case $\mathrm{Rank\text{-}1}(I_{\mathrm{box}})>\mathrm{Rank\text{-}1}(I_{\mathrm{sam}})$, the repository provides a controlled generator in which the coat cue is weak by design while the bbox arm keeps a strong identity-linked pen texture:
+
+```bash
+sh scripts/run_context_shortcut.sh yolo_arcface
+# or: sh scripts/run_context_shortcut.sh all
+python3 -m src.compare_crops
+```
+
+On the private server with real UAV frames, the same sign can appear when boxes retain pen-faithful background and SAM strips it. Keep the identity split fixed across arms; only the pixels change. Report $\Delta_{\mathrm{SAM}}$ with its sign and interpret a negative value as context leakage unless coat-only controls refute that reading.
 
 ## Experimental design
 
