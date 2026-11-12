@@ -4,94 +4,95 @@
 [![Dataset](https://zenodo.org/badge/DOI/10.5281/zenodo.13364663.svg)](https://doi.org/10.5281/zenodo.13364663)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB)](requirements.txt)
 
-**Tianyi Ma**, Zhengzhou University · [ORCID 0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · [GitHub @tianyi-star](https://github.com/tianyi-star)
+**Tianyi Ma**, Zhengzhou University  
+ORCID: [0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · GitHub: [@tianyi-star](https://github.com/tianyi-star)
 
-Mutong (牧瞳) compares three identification backbones on UAV images of the cattle back coat, each trained twice. One arm sees a SAM-purified coat pattern. The other sees the same animal cropped by the YOLO box, with SAM left out. The metric head on every cell is ArcFace.
+## Abstract
 
-This repository is the public skeleton. It keeps the interfaces, the path file, and the entry scripts. The image archive, the checkpoints, and the training and measurement code stay on the private Ubuntu server. No recognition figure is stored here. A TCSVT-oriented method and protocol draft, also without measured figures, is in [`paper/method.tex`](paper/method.tex).
+Mutong (牧瞳) provides a controlled comparison of individual cattle re-identification from unmanned aerial vehicle (UAV) imagery of the dorsal coat pattern. Three embedding backbones—YOLO-ReID, a task-pruned Vision Transformer, and the coat-pattern metric-learning architecture of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a YOLO bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Rank-1 and Rank-5 retrieval accuracy, together with parameter count and floating-point operations (FLOPs), constitute the reporting protocol. A method and experimental protocol draft oriented toward *IEEE Transactions on Circuits and Systems for Video Technology* is included in [`paper/method.tex`](paper/method.tex); measured recognition figures are produced by local training runs and are not embedded in this document.
+
+## Method overview
 
 ```mermaid
 flowchart TD
-    A[UAV Images] --> B["YOLO detector: output cattle bbox"]
-    B --> C["SAM: mask and crop cattle back region"]
-    B --> N["No SAM: crop the original image with the YOLO bbox"]
-    C --> D[Pure coat pattern image]
-    N --> P["Original crop: background, shadow, and legs may remain"]
-    D --> E[F-ODS balanced dataset]
-    P --> Q[F-ODS balanced dataset]
-    E --> F[Few-shot evaluation protocol]
-    Q --> R[Few-shot evaluation protocol]
+    A[UAV frames] --> B[YOLO cattle detection]
+    B --> C[SAM back-region mask]
+    B --> N[YOLO box crop without SAM]
+    C --> D[Purified coat-pattern image]
+    N --> P[Box crop with residual background]
+    D --> E[F-ODS support selection]
+    P --> Q[F-ODS support selection]
+    E --> F[Few-shot protocol]
+    Q --> R[Few-shot protocol]
     F --> G[YOLO-ReID]
     F --> H[Pruned ViT]
-    F --> I[Yaowu Wang]
+    F --> I[Wang et al. baseline]
     R --> G2[YOLO-ReID]
     R --> H2[Pruned ViT]
-    R --> I2[Yaowu Wang]
-    G & H & I --> J["Rank-1 / Rank-5 with SAM"]
-    G2 & H2 & I2 --> K["Rank-1 / Rank-5 without SAM"]
-    J --> L["Rank-1 gain from the SAM mask"]
+    R --> I2[Wang et al. baseline]
+    G & H & I --> J[Rank-1 / Rank-5 with SAM]
+    G2 & H2 & I2 --> K[Rank-1 / Rank-5 without SAM]
+    J --> L[Rank-1 gain attributable to the SAM mask]
     K --> L
 ```
 
-YOLO returns a cattle box for every frame. The two arms then use different pixels and the same identity split. The SAM arm builds a mask from that box and keeps the back coat pattern, so background, shadow, and legs fall outside the crop. The no-SAM arm crops the original frame with the box and stops there. F-ODS balances each arm on its own manifest. The few-shot protocol fixes the same `train`, `gallery`, and `query` animals for all six cells. Rank-1 and Rank-5 are the fraction of query images whose identity appears among the nearest gallery identities. Parameter count and FLOPs are recorded once per backbone, because the image size does not change with the crop.
+A YOLO detector localises each animal and yields an axis-aligned box. The SAM arm prompts the segmenter with that box, retains the dorsal coat mask, and crops to the masked region, thereby excluding pasture, hard shadow, and limbs that fall outside the mask. The control arm crops the original frame with the same box and does not invoke SAM. Farm-aware optimal dataset selection (F-ODS) balances the training pool of each arm independently, while the few-shot partition into `train`, `gallery`, and `query` identities is held fixed across all six experimental cells. At inference, identities are ranked by cosine similarity between $\ell_2$-normalised embeddings. Parameter count and FLOPs are measured on the embedding network at a common input resolution and exclude the ArcFace class-weight matrix, whose width depends on the number of training identities.
 
-The ablation question is the difference within each column:
+The primary ablation question is:
 
-> How much does a SAM mask that removes background, shadow, and legs raise Rank-1 for cattle back-coat re-identification?
+> To what extent does a SAM mask that removes background, shadow, and limbs improve Rank-1 accuracy in cattle back-coat re-identification?
 
-That difference is Rank-1 on the SAM crop minus Rank-1 on the YOLO-box crop, for the same backbone. A UAV pasture makes the question concrete: grass, clutter, and shadow sit inside a loose box and outside a coat mask. The public definition is `rank1_gain` in [`src/evaluate.py`](src/evaluate.py). It subtracts two rates supplied by the private server. This repository does not contain either rate.
+Formally, for a fixed backbone the gain is defined as
 
-## Models
+$$\Delta_{\mathrm{SAM}}=\mathrm{Rank\text{-}1}(I_{\mathrm{sam}})-\mathrm{Rank\text{-}1}(I_{\mathrm{box}}).$$
 
-The six cells are the product of the crop and the backbone.
+A positive value indicates that the mask raises Rank-1. The public implementation of this difference is `rank1_gain` in [`src/evaluate.py`](src/evaluate.py).
 
-| Input | YOLO-ReID `yolo_arcface` | Pruned ViT `pruned_vit_arcface` | Yaowu Wang `wang_metric` |
+## Experimental design
+
+The comparison comprises six cells formed by the Cartesian product of crop type and backbone.
+
+| Input crop | YOLO-ReID (`yolo_arcface`) | Pruned ViT (`pruned_vit_arcface`) | Wang *et al.* (`wang_metric`) |
 | --- | --- | --- | --- |
-| SAM purified back pattern | `sam` | `sam` | `sam` |
-| YOLO box, no SAM | `bbox` | `bbox` | `bbox` |
+| SAM-purified back pattern | `sam` | `sam` | `sam` |
+| YOLO box without SAM | `bbox` | `bbox` | `bbox` |
 
-| Name | Role |
+| Identifier | Role |
 | --- | --- |
-| `yolo_arcface` | CNN baseline. YOLO backbone and the shared ArcFace metric head. |
-| `pruned_vit_arcface` | Proposed model. Pruned Vision Transformer and the shared ArcFace metric head. |
-| `wang_metric` | Metric-learning baseline following Wang et al. (2025), trained with the same ArcFace metric head. |
+| `yolo_arcface` | Convolutional baseline: a YOLO-style trunk with the shared ArcFace head. |
+| `pruned_vit_arcface` | Proposed recogniser: a Vision Transformer with structured pruning and the shared ArcFace head. |
+| `wang_metric` | Baseline following Wang *et al.* (2025), retrained with the shared ArcFace head so that the loss is not a confounding factor. |
 
-Wang, Mücher, Wang, Wang, and Kooistra, [Deep metric learning for individual cattle identification using coat patterns](https://doi.org/10.1016/j.compag.2025.110754), Computers and Electronics in Agriculture, 2025. Their released training code is the Zenodo record [10.5281/zenodo.13361729](https://doi.org/10.5281/zenodo.13361729). This repository does not vendor that code. Yaowu Wang keeps their backbone as the baseline and trains it with ArcFace on both crops, so the loss is not a difference between cells. Figures reported in that paper are not results of this repository.
+The coat-pattern deep metric learning method of Wang, Mücher, Wang, Wang, and Kooistra [*Computers and Electronics in Agriculture*, 2025](https://doi.org/10.1016/j.compag.2025.110754) supplies the third backbone. Released training artefacts are available as Zenodo record [10.5281/zenodo.13361729](https://doi.org/10.5281/zenodo.13361729); that code is not vendored here. Published figures from Wang *et al.* arise under a different training objective and must not be treated as results of the present protocol.
 
-## ArcFace
+Shared hyperparameters—including image size, embedding dimension, ArcFace scale and margin, batch size, epoch budget, and learning rate—are recorded in [`configs/experiment.yaml`](configs/experiment.yaml). Any change to these values requires retraining of all six cells.
 
-ArcFace is the additive angular margin loss of Deng, Guo, Xue, and Zafeiriou, [ArcFace: Additive Angular Margin Loss for Deep Face Recognition](https://doi.org/10.1109/CVPR.2019.00482), CVPR 2019. In this project it is the metric head on YOLO-ReID, Pruned ViT, and Yaowu Wang, for both the SAM crop and the YOLO-box crop. The backbones and the crops differ. The head does not.
+## ArcFace metric head
 
-A backbone maps one coat-pattern image to an embedding. During training, that embedding and the rows of the class-weight matrix are L2-normalized. Their dot product is then the cosine of the angle between the sample and a class center. ArcFace adds a margin to the angle of the true identity, scales every cosine, and applies cross-entropy:
+Training employs the additive angular margin loss of Deng, Guo, Xue, and Zafeiriou [*ArcFace*, CVPR 2019](https://doi.org/10.1109/CVPR.2019.00482). The same head is attached to every backbone and to both crops. A backbone maps a coat-pattern image to an embedding; the embedding and the rows of the class-weight matrix are $\ell_2$-normalised, so that their inner product equals the cosine of the angle between the sample and a class centre. ArcFace adds a margin $m$ to the target angle, scales all logits by $s$, and applies cross-entropy:
 
 ```text
 target logit   = s * cos(theta_y + m)
 other logits   = s * cos(theta_j),  j != y
 ```
 
-`s` is the scale and `m` is the angular margin in radians. The margin makes the true class occupy a tighter cone on the hypersphere and pushes other identities away. That is the geometry used at test time: the class-weight matrix is dropped, each network returns an L2-normalized embedding, and Rank-1 / Rank-5 rank the gallery by cosine distance.
+At test time the class-weight matrix is discarded. Each network returns an $\ell_2$-normalised embedding, and gallery identities are ranked by cosine similarity.
 
-The shared values live in [`configs/experiment.yaml`](configs/experiment.yaml). They are the common training settings, not a measured result. Changing one of them means retraining all six cells.
-
-| Symbol | Config key | Value in the public file |
+| Symbol | Configuration key | Default |
 | --- | --- | --- |
-| `s` | `arcface_scale` | 64.0 |
-| `m` | `arcface_margin` | 0.5 |
-| embedding size | `embedding_dim` | 512 |
+| $s$ | `arcface_scale` | 64.0 |
+| $m$ | `arcface_margin` | 0.5 |
+| embedding dimension | `embedding_dim` | 512 |
 
-Parameter count and FLOPs are taken on the inference embedding network at the shared image size. The ArcFace class-weight matrix is left out of both counts, because its width follows the number of training identities. The public class is `ArcFaceHead` in [`src/arcface.py`](src/arcface.py). Its `forward` is implemented on the private server.
+The implementation resides in [`src/arcface.py`](src/arcface.py) (`ArcFaceHead`).
 
-## Data description
+## Dataset
 
-The image archive used with this project is Yaowu Wang's Zenodo record [Dataset for cattle growth monitoring in PLF using UAV-based LiDAR](https://zenodo.org/records/13364663) ([10.5281/zenodo.13364663](https://doi.org/10.5281/zenodo.13364663), 23 August 2024, CC BY 4.0).
+The image source is the public UAV cattle archive of Wang *et al.*, Zenodo record [*Dataset for cattle growth monitoring in PLF using UAV-based LiDAR*](https://zenodo.org/records/13364663) ([10.5281/zenodo.13364663](https://doi.org/10.5281/zenodo.13364663), 23 August 2024, CC BY 4.0). The archive contains imagery associated with 96 Simmental beef cattle. This repository neither redistributes the archive nor asserts a fixed internal folder layout. After download, frames are placed under the directory named in `configs/path.yaml` and described by a CSV manifest. All entry scripts read that manifest rather than a hard-coded directory tree.
 
-This repository does not unpack that archive and does not claim a folder layout inside it. After download, place the frames under the directory in `configs/path.yaml` and describe them with a CSV manifest. Every script reads that file rather than a hard-coded tree.
-
-**Data file:** [Zenodo record](https://zenodo.org/records/13364663) · [DOI](https://doi.org/10.5281/zenodo.13364663)
-
-| File | Description | Size | License |
+| File | Description | Size | Licence |
 | --- | --- | --- | --- |
-| `dataShare.zip` | UAV cattle archive deposited by Yaowu Wang | 26,486,342,645 bytes | CC BY 4.0 |
+| `dataShare.zip` | UAV cattle archive deposited by Yaowu Wang | 26 486 342 645 bytes | CC BY 4.0 |
 
 ```bibtex
 @dataset{wang2024uavlidar,
@@ -104,16 +105,16 @@ This repository does not unpack that archive and does not claim a folder layout 
 }
 ```
 
-### Local layout
+### Directory layout
 
-Edit [`configs/path.yaml`](configs/path.yaml) so each entry points at the private server. Relative paths are resolved from the repository root. Checkpoint entries ship empty. Filling them does not make this repository download a weight file.
+Paths in [`configs/path.yaml`](configs/path.yaml) are resolved relative to the repository root unless absolute. Checkpoint fields ship empty and are filled locally; the software does not download weights.
 
 ```text
 ${ROOT}
 |-- data
 |   |-- raw                     raw_image_dir
-|   |-- patterns                pattern_dir, SAM crops
-|   |-- bbox_crops              bbox_crop_dir, YOLO box crops without SAM
+|   |-- patterns                pattern_dir (SAM crops)
+|   |-- bbox_crops              bbox_crop_dir (YOLO box crops)
 |   |-- manifest.csv            manifest
 |   |-- pattern_manifest.csv    pattern_manifest
 |   |-- bbox_manifest.csv       bbox_manifest
@@ -121,7 +122,7 @@ ${ROOT}
 |   |-- yolo_arcface            SAM arm
 |   |-- pruned_vit_arcface
 |   |-- wang_metric
-|   |-- yolo_arcface_bbox       no-SAM arm
+|   |-- yolo_arcface_bbox       control arm
 |   |-- pruned_vit_arcface_bbox
 |   |-- wang_metric_bbox
 |-- configs
@@ -131,18 +132,18 @@ ${ROOT}
 
 | Path key | Description |
 | --- | --- |
-| `raw_image_dir` | UAV frames passed to YOLO detection |
-| `manifest` | Identity table with `image_path`, `identity_id`, and `split` |
+| `raw_image_dir` | UAV frames supplied to detection |
+| `manifest` | Identity table with columns `image_path`, `identity_id`, and `split` |
 | `pattern_dir` | SAM-purified back-pattern crops |
-| `pattern_manifest` | SAM arm. Same identities and splits, with `image_path` pointing at those crops |
-| `bbox_crop_dir` | Original-frame crops from the YOLO box, with SAM skipped |
-| `bbox_manifest` | No-SAM arm. Same identities and splits as `manifest`, different pixels |
-| `yolo_weights` | Local YOLO checkpoint. Empty in the public file |
-| `sam_weights` | Local SAM checkpoint. Empty in the public file |
-| `output_dir` | One subdirectory per model, written by the private training run |
-| `config` | Shared experiment file |
+| `pattern_manifest` | SAM-arm manifest (identical identities and splits; distinct pixels) |
+| `bbox_crop_dir` | YOLO-box crops without SAM |
+| `bbox_manifest` | Control-arm manifest |
+| `yolo_weights` | Local YOLO detector checkpoint |
+| `sam_weights` | Local SAM checkpoint |
+| `output_dir` | Per-model output directories |
+| `config` | Shared experiment configuration |
 
-`split` is `train`, `gallery`, or `query`. Preprocessing copies it onto both crop manifests, so the six cells share the same animals. Training reads the `train` rows of the selected manifest. Evaluation ranks every `query` row against the `gallery` rows in that same manifest.
+The field `split` takes values `train`, `gallery`, or `query`. Preprocessing copies the split onto both crop manifests so that all six cells share the same animals. Training uses `train` rows; evaluation ranks each `query` row against the `gallery` rows of the same manifest.
 
 Example `manifest.csv`:
 
@@ -153,13 +154,12 @@ data/raw/c001_b.jpg,c001,gallery
 data/raw/c001_c.jpg,c001,query
 ```
 
-## Setup
+## Installation
 
-1. Download `dataShare.zip` from Zenodo and put the frames you will use in `raw_image_dir`.
-2. Write `manifest.csv` with `image_path`, `identity_id`, and `split`.
-3. On the private server, set `yolo_weights` and `sam_weights` to local checkpoint files.
-4. Clone this repository and edit `configs/path.yaml` if your directories differ.
-5. Create an environment and install dependencies. Python 3.10 or newer:
+1. Obtain `dataShare.zip` from Zenodo and place the selected frames under `raw_image_dir`.
+2. Construct `manifest.csv` with columns `image_path`, `identity_id`, and `split`.
+3. Set `yolo_weights` and `sam_weights` in `configs/path.yaml` when detection and masking are required.
+4. Create a Python 3.10+ environment and install dependencies:
 
 ```bash
 python3 -m venv .venv
@@ -167,7 +167,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-`requirements.txt` lists the libraries the private server is expected to provide: PyTorch, torchvision, Ultralytics, timm, OpenCV, NumPy, Pillow, PyYAML, and tqdm. The public entry points do not import those packages while printing help, and they do not download a checkpoint.
+Dependencies include PyTorch, torchvision, Ultralytics, timm, OpenCV, NumPy, Pillow, PyYAML, and tqdm. Entry points do not download checkpoints when printing help:
 
 ```bash
 python3 -m src.preprocess --help
@@ -175,43 +175,40 @@ python3 -m src.train --help
 python3 -m src.evaluate --help
 ```
 
-## Background-removed 96-cattle experiment
+## Usage
 
-If the private server already has background-removed coat images for 96 identities
-as `READY/<identity_id>/*.png`, build the SAM-arm manifest and train all three
-models:
+Scripts read `configs/path.yaml` and the shared experiment file. Paths may be overridden when modules are invoked directly.
+
+### Background-removed identity folders
+
+When dorsal-coat images for the 96 identities are already available as `READY/<identity_id>/*`, the SAM-arm manifest may be constructed without re-running detection:
 
 ```bash
-# Point path.yaml config at the shared experiment file (default) or the CPU smoke file.
 sh scripts/prepare_ready.sh /path/to/READY sam
 sh scripts/run_experiment.sh sam
 ```
 
-The three cells are YOLO-ReID (`yolo_arcface`), Pruned ViT (`pruned_vit_arcface`),
-and Yaowu Wang metric learning (`wang_metric`), all under the shared ArcFace loss.
-Results are written to `outputs/*/metrics.json` and `outputs/summary_sam.json`.
+This command sequence trains and evaluates YOLO-ReID, the pruned ViT, and the Wang *et al.* baseline under the shared ArcFace loss. Metrics are written to `outputs/*/metrics.json` and summarised in `outputs/summary_sam.json`.
 
-To exercise the pipeline without the private archive:
+A synthetic generator is provided solely to verify the pipeline in the absence of the archive; its outputs are not scientific results:
 
 ```bash
 python3 -m src.make_synthetic --output-dir data/ready_bg_removed --num-identities 96
-# temporarily set config: configs/experiment_cpu.yaml in path.yaml for CPU boxes
+# optional: set config to configs/experiment_cpu.yaml for CPU-only hosts
 sh scripts/prepare_ready.sh data/ready_bg_removed sam
 sh scripts/run_experiment.sh sam
 ```
 
-## Commands
+### Full $2\times 3$ protocol
 
-The scripts read `configs/path.yaml` and `configs/experiment.yaml`. They stop at the public interface. Detection, SAM prompting, the YOLO-box crop, pruning, the ArcFace optimisation loop, and the measurements are implemented on the private server.
-
-1. Build both crops from the same detection. `sam` is the purified arm. `bbox` is the no-SAM arm. The two manifests are not interchangeable.
+1. Construct both crops from the same detections (`sam` for the purified arm; `bbox` for the control arm). The two manifests are not interchangeable.
 
 ```bash
 sh scripts/preprocess.sh sam
 sh scripts/preprocess.sh bbox
 ```
 
-2. Train the six cells. The second argument selects the crop and defaults to `sam`. Each command reads only the manifest for that crop.
+2. Train each cell. The second argument selects the crop and defaults to `sam`.
 
 ```bash
 sh scripts/train.sh yolo_arcface sam
@@ -222,7 +219,7 @@ sh scripts/train.sh pruned_vit_arcface bbox
 sh scripts/train.sh wang_metric bbox
 ```
 
-3. Evaluate the matching cell. The fields are Rank-1, Rank-5, parameters, and FLOPs. The command does not print a placeholder number. The SAM question is Rank-1 of a `sam` cell minus Rank-1 of the `bbox` cell with the same backbone.
+3. Evaluate the corresponding cell. Reported fields are Rank-1, Rank-5, parameters, and FLOPs. The SAM gain for a backbone is Rank-1 on the `sam` cell minus Rank-1 on the `bbox` cell.
 
 ```bash
 sh scripts/evaluate.sh yolo_arcface sam
@@ -233,42 +230,52 @@ sh scripts/evaluate.sh pruned_vit_arcface bbox
 sh scripts/evaluate.sh wang_metric bbox
 ```
 
-The same commands are available as `python3 -m src.preprocess`, `python3 -m src.train`, and `python3 -m src.evaluate`. Pass the paths from `configs/path.yaml` when you call the modules directly.
+Equivalent module entry points are `python3 -m src.preprocess`, `python3 -m src.train`, and `python3 -m src.evaluate`.
 
-What the private server fills in:
+Principal components:
 
-- YOLO inference, the SAM prompt that keeps the back coat pattern, and the YOLO-box crop that skips SAM, in `src/preprocess.py`
-- Backbone construction and ViT pruning, in `src/models.py`
-- `ArcFaceHead.forward`, in `src/arcface.py`
-- The optimisation loop, in `src/train.py`
-- Rank-1, Rank-5, parameter, and FLOP measurement, in `src/evaluate.py`
+| Module | Responsibility |
+| --- | --- |
+| [`src/preprocess.py`](src/preprocess.py) | Detection, SAM or box cropping, and ingestion of ready identity folders |
+| [`src/models.py`](src/models.py) | Backbone construction and ViT pruning |
+| [`src/arcface.py`](src/arcface.py) | Shared ArcFace head |
+| [`src/train.py`](src/train.py) | ArcFace optimisation loop |
+| [`src/evaluate.py`](src/evaluate.py) | Rank-1 / Rank-5 retrieval and efficiency accounting |
+| [`src/data.py`](src/data.py) | Manifest I/O and dataset construction |
 
 ## Repository layout
 
 ```text
 .
-├── LICENSE                  Apache License 2.0
+├── LICENSE
 ├── CITATION.cff
 ├── README.md
 ├── requirements.txt
 ├── configs/
 │   ├── experiment.yaml
+│   ├── experiment_cpu.yaml
 │   └── path.yaml
+├── paper/
+│   └── method.tex
 ├── scripts/
+│   ├── prepare_ready.sh
 │   ├── preprocess.sh
 │   ├── train.sh
-│   └── evaluate.sh
+│   ├── evaluate.sh
+│   └── run_experiment.sh
 └── src/
     ├── protocol.py
     ├── config.py
+    ├── data.py
     ├── preprocess.py
     ├── arcface.py
     ├── models.py
     ├── train.py
-    └── evaluate.py
+    ├── evaluate.py
+    └── make_synthetic.py
 ```
 
-Generated run directories, local image trees, and checkpoint files are listed in `.gitignore`.
+Generated run directories, local image trees, and checkpoint files are excluded by `.gitignore`.
 
 ## Citation
 
@@ -310,10 +317,10 @@ Tianyi Ma, Zhengzhou University. ORCID: [0000-0003-1167-621X](https://orcid.org/
 
 ## Funding
 
-This work was supported by the Songshan Laboratory (No.241110210200) and Major Science and Technology Special Project of Henan Province (No.221100210600).
+This work was supported by the Songshan Laboratory (No. 241110210200) and the Major Science and Technology Special Project of Henan Province (No. 221100210600).
 
-## License
+## Licence
 
-This software is licensed under the Apache License 2.0. The full text is in [LICENSE](LICENSE). The copyright notice is `Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）`.
+This software is distributed under the Apache License 2.0; see [LICENSE](LICENSE). The copyright notice is `Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）`.
 
-The Zenodo cattle archive remains under CC BY 4.0. That license belongs to the dataset depositor and does not apply to this code.
+The Zenodo cattle archive remains under CC BY 4.0. That licence attaches to the dataset depositor and does not govern this software.
