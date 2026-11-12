@@ -18,25 +18,35 @@ flowchart TD
     A[UAV frames] --> B[YOLO cattle detection]
     B --> C[SAM back-region mask]
     B --> N[YOLO box crop without SAM]
-    C --> D[Purified coat-pattern image]
-    N --> P[Box crop with residual background]
+    C --> D[Purified coat-pattern image I_sam]
+    N --> P[Box crop with residual background I_box]
     D --> E[F-ODS support selection]
     P --> Q[F-ODS support selection]
-    E --> F[Few-shot protocol]
-    Q --> R[Few-shot protocol]
+    E --> F[Fixed train / gallery / query split]
+    Q --> R[Same identity split as left arm]
     F --> G[YOLO-ReID]
     F --> H[Pruned ViT]
     F --> I[Wang et al. baseline]
     R --> G2[YOLO-ReID]
     R --> H2[Pruned ViT]
     R --> I2[Wang et al. baseline]
-    G & H & I --> J[Rank-1 / Rank-5 with SAM]
-    G2 & H2 & I2 --> K[Rank-1 / Rank-5 without SAM]
-    J --> L[Rank-1 gain attributable to the SAM mask]
-    K --> L
+
+    subgraph EVAL["Paired evaluation per backbone"]
+        direction TB
+        J["Cosine retrieval on I_sam → Rank-1 / Rank-5"]
+        K["Cosine retrieval on I_box → Rank-1 / Rank-5"]
+        L["Δ_SAM = Rank-1(I_sam) − Rank-1(I_box)"]
+        M["Params / FLOPs once per backbone at shared resolution"]
+        J --> L
+        K --> L
+        L --- M
+    end
+
+    G & H & I --> J
+    G2 & H2 & I2 --> K
 ```
 
-A YOLO detector localises each animal and yields an axis-aligned box. The SAM arm prompts the segmenter with that box, retains the dorsal coat mask, and crops to the masked region, thereby excluding pasture, hard shadow, and limbs that fall outside the mask. The control arm crops the original frame with the same box and does not invoke SAM. Farm-aware optimal dataset selection (F-ODS) balances the training pool of each arm independently, while the few-shot partition into `train`, `gallery`, and `query` identities is held fixed across all six experimental cells. At inference, identities are ranked by cosine similarity between $\ell_2$-normalised embeddings. Parameter count and FLOPs are measured on the embedding network at a common input resolution and exclude the ArcFace class-weight matrix, whose width depends on the number of training identities.
+Detection precedes the fork. For every UAV frame, a YOLO detector returns an axis-aligned cattle box that is shared by both experimental arms; the arms therefore differ in the retained pixels, not in the animal list. In the SAM arm, that box prompts a Segment Anything Model (SAM) mask of the dorsal coat, and the recogniser receives only the masked crop $I_{\mathrm{sam}}$. Pasture, hard shadow, and limbs that fall outside the mask are excluded. In the control arm, the same box crops the original frame to $I_{\mathrm{box}}$ and SAM is not applied, so background clutter may remain. Farm-aware optimal dataset selection (F-ODS) rebalances the training pool of each arm on its own crop manifest, while the few-shot assignment of identities to `train`, `gallery`, and `query` is held identical across all six cells. At test time, each query embedding is ranked against gallery embeddings by cosine similarity of $\ell_2$-normalised vectors; Rank-$k$ is the fraction of queries whose true identity appears among the $k$ nearest gallery identities. Parameter count and FLOPs are reported once per backbone at the common input resolution and exclude the ArcFace class-weight matrix, whose width scales with the number of training identities rather than with the crop operator.
 
 The primary ablation question is:
 
