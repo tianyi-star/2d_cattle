@@ -1,0 +1,41 @@
+{
+  "kind": "simulated_placeholder",
+  "scenario": "coat_biometric",
+  "note": "Simulated Rank-1 / Rank-5 for drafting the 2\u00d73 table. Not measured on the private UAV archive. Replace with outputs/summary_six_cells.json after a real run.",
+  "num_identities": 96,
+  "cells": [
+    {
+      "model": "yolo_arcface",
+      "display_name": "YOLO-ReID",
+      "rank1_sam": 0.912,
+      "rank5_sam": 0.968,
+      "rank1_bbox": 0.874,
+      "rank5_bbox": 0.941,
+      "delta_sam": 0.038000000000000034,
+      "parameters": 1635232,
+      "flops": 242000000.0
+    },
+    {
+      "model": "pruned_vit_arcface",
+      "display_name": "Pruned ViT",
+      "rank1_sam": 0.941,
+      "rank5_sam": 0.982,
+      "rank1_bbox": 0.889,
+      "rank5_bbox": 0.955,
+      "delta_sam": 0.051999999999999935,
+      "parameters": 5549120,
+      "flops": 1070000000.0
+    },
+    {
+      "model": "wang_metric",
+      "display_name": "Yaowu Wang",
+      "rank1_sam": 0.928,
+      "rank5_sam": 0.975,
+      "rank1_bbox": 0.901,
+      "rank5_bbox": 0.962,
+      "delta_sam": 0.027000000000000024,
+      "parameters": 23770752,
+      "flops": 4120000000.0
+    }
+  ]
+}

@@ -10,6 +10,8 @@ learning_rate: 0.0001
 weight_decay: 0.0001
 num_workers: 2
 embedding_dim: 512
+# Rank-1 / Rank-5 callback frequency during training (epochs).
+eval_every: 5
 # ArcFace scale and angular margin, shared by every cell of the 2 by 3 ablation.
 arcface_scale: 64.0
 arcface_margin: 0.5
