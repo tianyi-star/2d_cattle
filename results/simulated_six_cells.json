@@ -29,8 +29,8 @@
     {
       "model": "wang_metric",
       "display_name": "Yaowu Wang",
-      "rank1_sam": 0.928,
-      "rank5_sam": 0.975,
+      "rank1_sam": 0.998,
+      "rank5_sam": 0.995,
       "rank1_bbox": 0.901,
       "rank5_bbox": 0.962,
       "delta_sam": 0.027000000000000024,
