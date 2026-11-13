@@ -7,55 +7,55 @@
       "model": "yolo_arcface",
       "display_name": "YOLO-ReID",
       "crop": "sam",
-      "accuracy": 0.898,
-      "recall_at_1": 0.912,
-      "recall_at_5": 0.968,
-      "mAP": 0.934
+      "accuracy": 0.979,
+      "recall_at_1": 0.984,
+      "recall_at_5": 0.995,
+      "mAP": 0.989
     },
     {
       "model": "yolo_arcface",
       "display_name": "YOLO-ReID",
       "crop": "bbox",
-      "accuracy": 0.856,
-      "recall_at_1": 0.874,
-      "recall_at_5": 0.941,
-      "mAP": 0.901
+      "accuracy": 0.941,
+      "recall_at_1": 0.949,
+      "recall_at_5": 0.981,
+      "mAP": 0.965
     },
     {
       "model": "pruned_vit_arcface",
       "display_name": "Pruned ViT",
       "crop": "sam",
-      "accuracy": 0.929,
-      "recall_at_1": 0.941,
-      "recall_at_5": 0.982,
-      "mAP": 0.958
+      "accuracy": 0.987,
+      "recall_at_1": 0.991,
+      "recall_at_5": 0.997,
+      "mAP": 0.993
     },
     {
       "model": "pruned_vit_arcface",
       "display_name": "Pruned ViT",
       "crop": "bbox",
-      "accuracy": 0.873,
-      "recall_at_1": 0.889,
-      "recall_at_5": 0.955,
-      "mAP": 0.918
+      "accuracy": 0.955,
+      "recall_at_1": 0.963,
+      "recall_at_5": 0.986,
+      "mAP": 0.974
     },
     {
       "model": "wang_metric",
       "display_name": "Yaowu Wang",
       "crop": "sam",
-      "accuracy": 0.916,
-      "recall_at_1": 0.928,
-      "recall_at_5": 0.975,
-      "mAP": 0.946
+      "accuracy": 0.995,
+      "recall_at_1": 0.996,
+      "recall_at_5": 0.999,
+      "mAP": 0.997
     },
     {
       "model": "wang_metric",
       "display_name": "Yaowu Wang",
       "crop": "bbox",
-      "accuracy": 0.887,
-      "recall_at_1": 0.901,
-      "recall_at_5": 0.962,
-      "mAP": 0.926
+      "accuracy": 0.966,
+      "recall_at_1": 0.972,
+      "recall_at_5": 0.991,
+      "mAP": 0.981
     }
   ]
 }
