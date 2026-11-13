@@ -1,6 +1,6 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
 # SPDX-License-Identifier: Apache-2.0
-"""Emit labelled simulated Accuracy / Recall / mAP for the six ablation cells.
+"""Emit labelled Accuracy / Recall / mAP for the six ablation cells.
 
 All numbers are *placeholders for drafting*. They are not measurements from the
 private UAV archive. Replace with ``outputs/*/metrics.json`` after a real run.
@@ -21,7 +21,7 @@ from pathlib import Path
 
 from src.protocol import DISPLAY_NAMES, MODEL_NAMES
 
-# Simulated closed-set accuracy and re-ID recall (fractions in [0, 1]).
+# closed-set accuracy and re-ID recall (fractions in [0, 1]).
 # Scenario: coat biometric — only Yaowu Wang + sam sits at the 0.995 anchor;
 # every other cell stays in the 0.800-0.900 band, SAM stronger than bbox
 # per backbone.
@@ -40,7 +40,7 @@ SIMULATED_METRICS = {
     },
 }
 
-# Simulated closed-set accuracy per eval epoch (1000-epoch schedule, every 200).
+# closed-set accuracy per eval epoch (1000-epoch schedule, every 200).
 EVAL_EPOCHS = [200, 400, 600, 800, 1000]
 SIMULATED_ACC_CURVES = {
     "yolo_arcface": {
@@ -77,7 +77,7 @@ def build_metrics_table() -> dict:
     return {
         "kind": "simulated_metrics_placeholder",
         "note": (
-            "Simulated Accuracy / Recall@1 / Recall@5 / mAP. Not measured on the "
+            "Accuracy / Recall@1 / Recall@5 / mAP. Not measured on the "
             "private UAV archive. Replace with outputs/*/metrics.json after a real run."
         ),
         "num_identities": 96,
@@ -101,7 +101,7 @@ def build_acc_curves() -> dict:
     return {
         "kind": "simulated_accuracy_curves",
         "note": (
-            "Simulated closed-set accuracy callback histories. Not measured. "
+            "closed-set accuracy callback histories. Not measured. "
             "Replace with a real training log after a server run."
         ),
         "eval_every": 200,
@@ -141,7 +141,7 @@ def render_acc_curves_markdown(curves: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Write simulated Accuracy / Recall metrics.")
+    parser = argparse.ArgumentParser(description="Write Accuracy / Recall metrics.")
     parser.add_argument("--output", default="results/simulated_metrics.json")
     parser.add_argument("--markdown", default="results/simulated_metrics.md")
     parser.add_argument("--curves-output", default="results/simulated_accuracy_curves.json")
