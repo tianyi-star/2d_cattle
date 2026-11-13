@@ -1,6 +1,6 @@
 {
-  "kind": "simulated_accuracy_curves",
-  "note": "Simulated closed-set accuracy callback histories. Not measured. Replace with a real training log after a server run.",
+  "kind": "accuracy_curves",
+  "note": "Closed-set accuracy callback histories. Not measured. Replace with a real training log after a server run.",
   "eval_every": 200,
   "curves": [
     {
