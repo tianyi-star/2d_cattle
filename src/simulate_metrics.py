@@ -22,20 +22,21 @@ from pathlib import Path
 from src.protocol import DISPLAY_NAMES, MODEL_NAMES
 
 # Simulated closed-set accuracy and re-ID recall (fractions in [0, 1]).
-# Scenario: coat biometric — anchored on Yaowu Wang + sam accuracy = 0.995;
-# the other cells scale coherently below it, SAM stronger than bbox everywhere.
+# Scenario: coat biometric — only Yaowu Wang + sam sits at the 0.995 anchor;
+# every other cell stays in the 0.800-0.900 band, SAM stronger than bbox
+# per backbone.
 SIMULATED_METRICS = {
     "yolo_arcface": {
-        "sam": {"accuracy": 0.979, "recall_at_1": 0.984, "recall_at_5": 0.995, "mAP": 0.989},
-        "bbox": {"accuracy": 0.941, "recall_at_1": 0.949, "recall_at_5": 0.981, "mAP": 0.965},
+        "sam": {"accuracy": 0.847, "recall_at_1": 0.861, "recall_at_5": 0.891, "mAP": 0.876},
+        "bbox": {"accuracy": 0.806, "recall_at_1": 0.823, "recall_at_5": 0.871, "mAP": 0.845},
     },
     "pruned_vit_arcface": {
-        "sam": {"accuracy": 0.987, "recall_at_1": 0.991, "recall_at_5": 0.997, "mAP": 0.993},
-        "bbox": {"accuracy": 0.955, "recall_at_1": 0.963, "recall_at_5": 0.986, "mAP": 0.974},
+        "sam": {"accuracy": 0.862, "recall_at_1": 0.878, "recall_at_5": 0.898, "mAP": 0.889},
+        "bbox": {"accuracy": 0.828, "recall_at_1": 0.844, "recall_at_5": 0.882, "mAP": 0.861},
     },
     "wang_metric": {
         "sam": {"accuracy": 0.995, "recall_at_1": 0.996, "recall_at_5": 0.999, "mAP": 0.997},
-        "bbox": {"accuracy": 0.966, "recall_at_1": 0.972, "recall_at_5": 0.991, "mAP": 0.981},
+        "bbox": {"accuracy": 0.835, "recall_at_1": 0.852, "recall_at_5": 0.887, "mAP": 0.868},
     },
 }
 
@@ -43,16 +44,16 @@ SIMULATED_METRICS = {
 EVAL_EPOCHS = [5, 10, 15, 20, 25, 30]
 SIMULATED_ACC_CURVES = {
     "yolo_arcface": {
-        "sam": [0.418, 0.641, 0.796, 0.887, 0.952, 0.979],
-        "bbox": [0.371, 0.592, 0.733, 0.831, 0.899, 0.941],
+        "sam": [0.372, 0.561, 0.688, 0.771, 0.818, 0.847],
+        "bbox": [0.341, 0.522, 0.641, 0.718, 0.768, 0.806],
     },
     "pruned_vit_arcface": {
-        "sam": [0.496, 0.715, 0.853, 0.924, 0.969, 0.987],
-        "bbox": [0.407, 0.642, 0.771, 0.854, 0.918, 0.955],
+        "sam": [0.438, 0.632, 0.751, 0.812, 0.844, 0.862],
+        "bbox": [0.389, 0.574, 0.692, 0.758, 0.801, 0.828],
     },
     "wang_metric": {
         "sam": [0.461, 0.697, 0.841, 0.923, 0.973, 0.995],
-        "bbox": [0.401, 0.627, 0.759, 0.849, 0.923, 0.966],
+        "bbox": [0.366, 0.548, 0.671, 0.749, 0.798, 0.835],
     },
 }
 

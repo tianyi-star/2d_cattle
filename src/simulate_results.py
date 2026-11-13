@@ -18,22 +18,22 @@ from src.evaluate import rank1_gain
 from src.protocol import DISPLAY_NAMES, MODEL_NAMES
 
 # Paper-style simulated final accuracies (fractions in [0, 1]).
-# Scenario: coat biometric — anchored on Yaowu Wang + sam (Recall@1 = 0.996,
-# matching the 0.995 closed-set accuracy anchor); SAM arm modestly stronger
-# than the bbox arm in every row. Rank-1/5 here must stay equal to
+# Scenario: coat biometric — only Yaowu Wang + sam sits at the 0.995 anchor
+# (Rank-1 = 0.996); every other cell stays in the 0.800-0.900 band, SAM arm
+# stronger than the bbox arm per backbone. Rank-1/5 here must stay equal to
 # Recall@1/5 in src/simulate_metrics.py.
 SIMULATED_FINAL = {
     "yolo_arcface": {
-        "sam": {"rank1": 0.984, "rank5": 0.995, "parameters": 1_635_232, "flops": 2.42e8},
-        "bbox": {"rank1": 0.949, "rank5": 0.981, "parameters": 1_635_232, "flops": 2.42e8},
+        "sam": {"rank1": 0.861, "rank5": 0.891, "parameters": 1_635_232, "flops": 2.42e8},
+        "bbox": {"rank1": 0.823, "rank5": 0.871, "parameters": 1_635_232, "flops": 2.42e8},
     },
     "pruned_vit_arcface": {
-        "sam": {"rank1": 0.991, "rank5": 0.997, "parameters": 5_549_120, "flops": 1.07e9},
-        "bbox": {"rank1": 0.963, "rank5": 0.986, "parameters": 5_549_120, "flops": 1.07e9},
+        "sam": {"rank1": 0.878, "rank5": 0.898, "parameters": 5_549_120, "flops": 1.07e9},
+        "bbox": {"rank1": 0.844, "rank5": 0.882, "parameters": 5_549_120, "flops": 1.07e9},
     },
     "wang_metric": {
         "sam": {"rank1": 0.996, "rank5": 0.999, "parameters": 23_770_752, "flops": 4.12e9},
-        "bbox": {"rank1": 0.972, "rank5": 0.991, "parameters": 23_770_752, "flops": 4.12e9},
+        "bbox": {"rank1": 0.852, "rank5": 0.887, "parameters": 23_770_752, "flops": 4.12e9},
     },
 }
 
@@ -43,22 +43,22 @@ EVAL_EPOCHS = [5, 10, 15, 20, 25, 30]
 SIMULATED_CURVES = {
     "yolo_arcface": {
         "sam": {
-            "rank1": [0.443, 0.668, 0.817, 0.902, 0.961, 0.984],
-            "rank5": [0.634, 0.819, 0.921, 0.965, 0.987, 0.995],
+            "rank1": [0.398, 0.592, 0.715, 0.794, 0.834, 0.861],
+            "rank5": [0.552, 0.724, 0.818, 0.862, 0.880, 0.891],
         },
         "bbox": {
-            "rank1": [0.397, 0.622, 0.761, 0.852, 0.917, 0.949],
-            "rank5": [0.589, 0.778, 0.893, 0.941, 0.968, 0.981],
+            "rank1": [0.358, 0.548, 0.674, 0.752, 0.794, 0.823],
+            "rank5": [0.512, 0.688, 0.782, 0.831, 0.856, 0.871],
         },
     },
     "pruned_vit_arcface": {
         "sam": {
-            "rank1": [0.524, 0.748, 0.872, 0.936, 0.975, 0.991],
-            "rank5": [0.701, 0.858, 0.944, 0.978, 0.992, 0.997],
+            "rank1": [0.471, 0.668, 0.781, 0.832, 0.861, 0.878],
+            "rank5": [0.612, 0.772, 0.845, 0.878, 0.891, 0.898],
         },
         "bbox": {
-            "rank1": [0.433, 0.671, 0.792, 0.871, 0.931, 0.963],
-            "rank5": [0.615, 0.797, 0.905, 0.951, 0.974, 0.986],
+            "rank1": [0.402, 0.591, 0.705, 0.774, 0.815, 0.844],
+            "rank5": [0.561, 0.712, 0.798, 0.841, 0.866, 0.882],
         },
     },
     "wang_metric": {
@@ -67,8 +67,8 @@ SIMULATED_CURVES = {
             "rank5": [0.672, 0.841, 0.933, 0.972, 0.994, 0.999],
         },
         "bbox": {
-            "rank1": [0.427, 0.653, 0.781, 0.876, 0.938, 0.972],
-            "rank5": [0.604, 0.812, 0.911, 0.956, 0.978, 0.991],
+            "rank1": [0.384, 0.571, 0.694, 0.768, 0.816, 0.852],
+            "rank5": [0.538, 0.705, 0.802, 0.848, 0.872, 0.887],
         },
     },
 }
