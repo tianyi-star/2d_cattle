@@ -8,7 +8,8 @@ once on the SAM-purified manifest and once on the YOLO-box manifest. Both runs
 use one image size and one ArcFace scale and margin.
 
 Rows with ``split=train`` are the training rows. Gallery and query rows stay
-in the manifest so evaluation can use the same file.
+in the manifest so evaluation can use the same file. A Rank-1 / Rank-5
+callback can run after each epoch on those held-out splits.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.arcface import ArcFaceHead
+from src.callbacks import RankAccuracyCallback
 from src.config import load_yaml, require_shared_config
 from src.data import ManifestDataset, filter_split, read_manifest
 from src.models import build_model, count_parameters
@@ -45,7 +47,6 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
     require_shared_config(config)
 
     root = Path(manifest).resolve().parent.parent if Path(manifest).name.endswith(".csv") else Path(".")
-    # Resolve relative image paths against the repository root (parent of data/).
     repo_root = Path(manifest).resolve()
     for parent in [repo_root.parent, *repo_root.parents]:
         if (parent / "configs" / "experiment.yaml").is_file() or (parent / "src").is_dir():
@@ -64,6 +65,7 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
     epochs = int(config["epochs"])
     lr = float(config["learning_rate"])
     seed = int(config["seed"])
+    eval_every = int(config.get("eval_every") if config.get("eval_every") is not None else 1)
     torch.manual_seed(seed)
 
     dataset = ManifestDataset(
@@ -95,9 +97,20 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         weight_decay=float(config.get("weight_decay") or 1e-4),
     )
 
+    rank_callback = RankAccuracyCallback(
+        rows=rows,
+        root=root,
+        image_size=image_size,
+        identity_to_index=identity_to_index,
+        batch_size=batch_size,
+        device=device,
+        every_n_epochs=eval_every,
+    )
+
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     history = []
+    best_rank1 = -1.0
     model.train()
     head.train()
     for epoch in range(1, epochs + 1):
@@ -116,8 +129,31 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
             n_batches += 1
             progress.set_postfix(loss=f"{loss.item():.4f}")
         mean_loss = running / max(n_batches, 1)
-        history.append({"epoch": epoch, "loss": mean_loss})
+        record: dict = {"epoch": epoch, "loss": mean_loss}
         print(f"{DISPLAY_NAMES[model_name]} {crop} epoch {epoch}: loss={mean_loss:.4f}", flush=True)
+
+        if rank_callback.should_run(epoch, epochs):
+            ranks = rank_callback(model, epoch)
+            record["rank1"] = ranks["rank1"]
+            record["rank5"] = ranks["rank5"]
+            if ranks["rank1"] >= best_rank1:
+                best_rank1 = ranks["rank1"]
+                torch.save(
+                    {
+                        "model_name": model_name,
+                        "crop": crop,
+                        "config": config,
+                        "identity_to_index": identity_to_index,
+                        "model_state": model.state_dict(),
+                        "history": history + [record],
+                        "parameters": count_parameters(model),
+                        "best_rank1": best_rank1,
+                        "best_rank5": ranks["rank5"],
+                        "best_epoch": epoch,
+                    },
+                    out / "checkpoint_best.pt",
+                )
+        history.append(record)
 
     checkpoint = {
         "model_name": model_name,
@@ -126,10 +162,17 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         "identity_to_index": identity_to_index,
         "model_state": model.state_dict(),
         "history": history,
+        "rank_callback_history": rank_callback.history,
         "parameters": count_parameters(model),
+        "best_rank1": best_rank1 if best_rank1 >= 0 else None,
     }
     ckpt_path = out / "checkpoint.pt"
     torch.save(checkpoint, ckpt_path)
+    # Prefer the best Rank-1 checkpoint for final evaluation when available.
+    best_path = out / "checkpoint_best.pt"
+    if best_path.is_file():
+        ckpt_path.write_bytes(best_path.read_bytes())
+
     meta = {
         "model": model_name,
         "display_name": DISPLAY_NAMES[model_name],
@@ -139,9 +182,12 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         "num_identities": len(identities),
         "parameters": checkpoint["parameters"],
         "history": history,
+        "rank_callback_history": rank_callback.history,
+        "best_rank1": checkpoint["best_rank1"],
         "checkpoint": str(ckpt_path),
     }
     (out / "train_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (out / "rank_callback.json").write_text(json.dumps(rank_callback.history, indent=2), encoding="utf-8")
     print(json.dumps(meta, indent=2), flush=True)
     return meta
 

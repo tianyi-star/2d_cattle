@@ -189,6 +189,18 @@ python3 -m src.evaluate --help
 
 Scripts read `configs/path.yaml` and the shared experiment file. Paths may be overridden when modules are invoked directly.
 
+### Six-cell run with Rank-1 / Rank-5 callback
+
+Training logs Rank-1 and Rank-5 after every `eval_every` epochs via `RankAccuracyCallback` (`src/callbacks.py`). Histories are written to `outputs/*/rank_callback.json`. To run all six cells on paired synthetic crops (or after pointing manifests at the private server):
+
+```bash
+sh scripts/run_six_cells.sh configs/experiment_cpu.yaml   # CPU smoke
+# sh scripts/run_six_cells.sh configs/experiment.yaml    # server default
+python3 -m src.simulate_results                           # labelled draft table
+```
+
+Measured summaries land in `outputs/summary_six_cells.json`. Simulated placeholders for table drafting land in `results/simulated_six_cells.json` and are explicitly marked as non-measured.
+
 ### Background-removed identity folders
 
 When dorsal-coat images for the 96 identities are already available as `READY/<identity_id>/*`, the SAM-arm manifest may be constructed without re-running detection:

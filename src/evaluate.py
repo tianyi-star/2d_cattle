@@ -70,7 +70,9 @@ def _repo_root(manifest: str) -> Path:
 
 
 @torch.no_grad()
-def _embed_split(model, rows, root, image_size, identity_to_index, batch_size, device):
+def embed_split(model, rows, root, image_size, identity_to_index, batch_size, device):
+    """Embed one manifest split. Used by evaluation and the Rank-1/5 callback."""
+
     if not rows:
         return torch.empty(0, model.embedding_dim, device=device), []
     dataset = ManifestDataset(
@@ -92,7 +94,9 @@ def _embed_split(model, rows, root, image_size, identity_to_index, batch_size, d
     return torch.cat(embeddings, dim=0), identities
 
 
-def _rank_metrics(query_emb, query_ids, gallery_emb, gallery_ids, ks=(1, 5)) -> dict[str, float]:
+def compute_rank_metrics(query_emb, query_ids, gallery_emb, gallery_ids, ks=(1, 5)) -> dict[str, float]:
+    """Rank-k accuracy: fraction of queries whose identity is in the top-k gallery IDs."""
+
     if query_emb.numel() == 0 or gallery_emb.numel() == 0:
         raise ValueError("Query and gallery splits must both be non-empty.")
     # Cosine similarity because embeddings are L2-normalized.
@@ -115,6 +119,11 @@ def _rank_metrics(query_emb, query_ids, gallery_emb, gallery_ids, ks=(1, 5)) -> 
                 hits[k] += 1
     n = len(query_ids)
     return {f"rank{k}": hits[k] / n for k in ks}
+
+
+# Backward-compatible aliases.
+_embed_split = embed_split
+_rank_metrics = compute_rank_metrics
 
 
 def run_evaluation(model_name: str, manifest: str, config_path: str, run_dir: str, crop: str) -> dict:
@@ -151,13 +160,13 @@ def run_evaluation(model_name: str, manifest: str, config_path: str, run_dir: st
     image_size = int(config["image_size"])
     batch_size = int(config["batch_size"])
 
-    gallery_emb, gallery_ids = _embed_split(
+    gallery_emb, gallery_ids = embed_split(
         model, gallery_rows, root, image_size, identity_to_index, batch_size, device
     )
-    query_emb, query_ids = _embed_split(
+    query_emb, query_ids = embed_split(
         model, query_rows, root, image_size, identity_to_index, batch_size, device
     )
-    ranks = _rank_metrics(query_emb, query_ids, gallery_emb, gallery_ids)
+    ranks = compute_rank_metrics(query_emb, query_ids, gallery_emb, gallery_ids)
     params = int(checkpoint.get("parameters") or count_parameters(model))
     flops = estimate_flops(model, image_size, device)
 
