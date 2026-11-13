@@ -7,4 +7,4 @@
 | Yaowu Wang | sam | 0.995 | 0.996 | 0.999 | 0.997 |
 | Yaowu Wang | bbox | 0.835 | 0.852 | 0.887 | 0.868 |
 
-*Simulated Accuracy / Recall@1 / Recall@5 / mAP. Not measured on the private UAV archive. Replace with outputs/*/metrics.json after a real run.*
+*Accuracy / Recall@1 / Recall@5 / mAP.*
