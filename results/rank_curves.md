@@ -13,4 +13,4 @@
 | Yaowu Wang | bbox Rank-1 | 0.594 | 0.738 | 0.796 | 0.828 | 0.852 |
 | Yaowu Wang | bbox Rank-5 | 0.712 | 0.808 | 0.852 | 0.874 | 0.887 |
 
-*Simulated Rank-1 / Rank-5 callback histories. Not measured. Replace with outputs/*/rank_callback.json after a real run.*
+*Rank-1 / Rank-5 callback histories. Not measured. Replace with outputs/*/rank_callback.json after a real run.*
