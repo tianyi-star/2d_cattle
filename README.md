@@ -199,7 +199,7 @@ sh scripts/run_six_cells.sh configs/experiment_cpu.yaml   # CPU smoke
 python3 -m src.simulate_results                           # labelled draft table
 ```
 
-Measured summaries land in `outputs/summary_six_cells.json`. Simulated placeholders for table drafting land in `results/simulated_six_cells.json` (final accuracies) and `results/simulated_rank_curves.json` (per-epoch Rank-1 / Rank-5 callback histories); both are explicitly marked as non-measured.
+Measured summaries land in `outputs/summary_six_cells.json`. Simulated placeholders for table drafting land in `results/simulated_six_cells.json` (final retrieval accuracies), `results/simulated_rank_curves.json` (per-epoch Rank-1 / Rank-5 callback histories), and `results/simulated_metrics.json` (closed-set Accuracy, Recall@1, Recall@5, mAP); all are explicitly marked as non-measured. In this project *Accuracy* denotes closed-set classification, while *Recall@k* denotes re-ID retrieval (the same quantity reported elsewhere as Rank-$k$).
 
 ### Background-removed identity folders
 
