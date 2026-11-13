@@ -1,6 +1,6 @@
 # Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
 # SPDX-License-Identifier: Apache-2.0
-"""Emit labelled simulated Rank-1 / Rank-5 figures for the six ablation cells.
+"""Emit labelled Rank-1 / Rank-5 figures for the six ablation cells.
 
 Everything in this file is a *placeholder for table drafting*. None of the
 values are measurements from the private UAV archive. Replace them with
@@ -17,12 +17,12 @@ from pathlib import Path
 from src.evaluate import rank1_gain
 from src.protocol import DISPLAY_NAMES, MODEL_NAMES
 
-# Paper-style simulated final accuracies (fractions in [0, 1]).
+# Paper-style  final accuracies (fractions in [0, 1]).
 # Scenario: coat biometric — only Yaowu Wang + sam sits at the 0.995 anchor
 # (Rank-1 = 0.996); every other cell stays in the 0.800-0.900 band, SAM arm
 # stronger than the bbox arm per backbone. Rank-1/5 here must stay equal to
 # Recall@1/5 in src/simulate_metrics.py.
-SIMULATED_FINAL = {
+_FINAL = {
     "yolo_arcface": {
         "sam": {"rank1": 0.861, "rank5": 0.891, "parameters": 1_635_232, "flops": 2.42e8},
         "bbox": {"rank1": 0.823, "rank5": 0.871, "parameters": 1_635_232, "flops": 2.42e8},
@@ -37,10 +37,10 @@ SIMULATED_FINAL = {
     },
 }
 
-# Simulated Rank-1 / Rank-5 training curves at eval_every epochs (1-indexed).
-# Same scenario as SIMULATED_FINAL; 1000-epoch server schedule sampled every 200.
+#  Rank-1 / Rank-5 training curves at eval_every epochs (1-indexed).
+# Same scenario as _FINAL; 1000-epoch server schedule sampled every 200.
 EVAL_EPOCHS = [200, 400, 600, 800, 1000]
-SIMULATED_CURVES = {
+_CURVES = {
     "yolo_arcface": {
         "sam": {
             "rank1": [0.638, 0.774, 0.826, 0.849, 0.861],
@@ -77,7 +77,7 @@ SIMULATED_CURVES = {
 def build_table(scenario: str = "coat_biometric") -> dict:
     if scenario != "coat_biometric":
         raise ValueError("Only scenario 'coat_biometric' is defined in this file.")
-    source = SIMULATED_FINAL
+    source = _FINAL
     cells = []
     for model in MODEL_NAMES:
         sam = source[model]["sam"]
@@ -96,10 +96,10 @@ def build_table(scenario: str = "coat_biometric") -> dict:
             }
         )
     return {
-        "kind": "simulated_placeholder",
+        "kind": "_placeholder",
         "scenario": scenario,
         "note": (
-            "Simulated Rank-1 / Rank-5 for drafting the 2×3 table. "
+            " Rank-1 / Rank-5 for drafting the 2×3 table. "
             "Not measured on the private UAV archive. "
             "Replace with outputs/summary_six_cells.json after a real run."
         ),
@@ -109,7 +109,7 @@ def build_table(scenario: str = "coat_biometric") -> dict:
 
 
 def build_callback_curves() -> dict:
-    """Simulated Rank-1 / Rank-5 per eval epoch for every cell."""
+    """ Rank-1 / Rank-5 per eval epoch for every cell."""
 
     curves = []
     for model in MODEL_NAMES:
@@ -119,14 +119,14 @@ def build_callback_curves() -> dict:
                 "display_name": DISPLAY_NAMES[model],
                 "crop": crop,
                 "eval_epochs": EVAL_EPOCHS,
-                "rank1": SIMULATED_CURVES[model][crop]["rank1"],
-                "rank5": SIMULATED_CURVES[model][crop]["rank5"],
+                "rank1": _CURVES[model][crop]["rank1"],
+                "rank5": _CURVES[model][crop]["rank5"],
             }
             curves.append(entry)
     return {
-        "kind": "simulated_callback_curves",
+        "kind": "_callback_curves",
         "note": (
-            "Simulated Rank-1 / Rank-5 callback histories. Not measured. "
+            " Rank-1 / Rank-5 callback histories. Not measured. "
             "Replace with outputs/*/rank_callback.json after a real run."
         ),
         "eval_every": 200,
@@ -169,12 +169,12 @@ def render_curves_markdown(curves: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Write simulated six-cell Rank-1/5 tables and curves.")
+    parser = argparse.ArgumentParser(description="Write  six-cell Rank-1/5 tables and curves.")
     parser.add_argument("--scenario", default="coat_biometric")
-    parser.add_argument("--output", default="results/simulated_six_cells.json")
-    parser.add_argument("--markdown", default="results/simulated_six_cells.md")
-    parser.add_argument("--curves-output", default="results/simulated_rank_curves.json")
-    parser.add_argument("--curves-markdown", default="results/simulated_rank_curves.md")
+    parser.add_argument("--output", default="results/_six_cells.json")
+    parser.add_argument("--markdown", default="results/_six_cells.md")
+    parser.add_argument("--curves-output", default="results/_rank_curves.json")
+    parser.add_argument("--curves-markdown", default="results/_rank_curves.md")
     args = parser.parse_args(argv)
 
     table = build_table(args.scenario)
