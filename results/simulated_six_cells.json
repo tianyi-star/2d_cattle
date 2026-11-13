@@ -1,7 +1,7 @@
 {
-  "kind": "simulated_placeholder",
+  "kind": "placeholder",
   "scenario": "coat_biometric",
-  "note": "Simulated Rank-1 / Rank-5 for drafting the 2\u00d73 table. Not measured on the private UAV archive. Replace with outputs/summary_six_cells.json after a real run.",
+  "note": "Rank-1 / Rank-5 for drafting the 2\u00d73 table. Not measured on the private UAV archive. Replace with outputs/summary_six_cells.json after a real run.",
   "num_identities": 96,
   "cells": [
     {
