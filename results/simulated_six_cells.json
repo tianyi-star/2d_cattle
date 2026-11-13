@@ -1,16 +1,16 @@
 {
-  "kind": "placeholder",
+  "kind": "simulated_placeholder",
   "scenario": "coat_biometric",
-  "note": "Rank-1 / Rank-5 for drafting the 2\u00d73 table. Not measured on the private UAV archive. Replace with outputs/summary_six_cells.json after a real run.",
+  "note": "Simulated Rank-1 / Rank-5 for drafting the 2\u00d73 table. Not measured on the private UAV archive. Replace with outputs/summary_six_cells.json after a real run.",
   "num_identities": 96,
   "cells": [
     {
       "model": "yolo_arcface",
       "display_name": "YOLO-ReID",
-      "rank1_sam": 0.912,
-      "rank5_sam": 0.968,
-      "rank1_bbox": 0.874,
-      "rank5_bbox": 0.941,
+      "rank1_sam": 0.861,
+      "rank5_sam": 0.891,
+      "rank1_bbox": 0.823,
+      "rank5_bbox": 0.871,
       "delta_sam": 0.038000000000000034,
       "parameters": 1635232,
       "flops": 242000000.0
@@ -18,22 +18,22 @@
     {
       "model": "pruned_vit_arcface",
       "display_name": "Pruned ViT",
-      "rank1_sam": 0.941,
-      "rank5_sam": 0.982,
-      "rank1_bbox": 0.889,
-      "rank5_bbox": 0.955,
-      "delta_sam": 0.051999999999999935,
+      "rank1_sam": 0.878,
+      "rank5_sam": 0.898,
+      "rank1_bbox": 0.844,
+      "rank5_bbox": 0.882,
+      "delta_sam": 0.03400000000000003,
       "parameters": 5549120,
       "flops": 1070000000.0
     },
     {
       "model": "wang_metric",
       "display_name": "Yaowu Wang",
-      "rank1_sam": 0.998,
-      "rank5_sam": 0.995,
-      "rank1_bbox": 0.901,
-      "rank5_bbox": 0.962,
-      "delta_sam": 0.027000000000000024,
+      "rank1_sam": 0.996,
+      "rank5_sam": 0.999,
+      "rank1_bbox": 0.852,
+      "rank5_bbox": 0.887,
+      "delta_sam": 0.14400000000000002,
       "parameters": 23770752,
       "flops": 4120000000.0
     }

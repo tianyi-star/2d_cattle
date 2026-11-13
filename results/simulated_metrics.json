@@ -1,0 +1,61 @@
+{
+  "kind": "simulated_metrics_placeholder",
+  "note": "Simulated Accuracy / Recall@1 / Recall@5 / mAP. Not measured on the private UAV archive. Replace with outputs/*/metrics.json after a real run.",
+  "num_identities": 96,
+  "cells": [
+    {
+      "model": "yolo_arcface",
+      "display_name": "YOLO-ReID",
+      "crop": "sam",
+      "accuracy": 0.847,
+      "recall_at_1": 0.861,
+      "recall_at_5": 0.891,
+      "mAP": 0.876
+    },
+    {
+      "model": "yolo_arcface",
+      "display_name": "YOLO-ReID",
+      "crop": "bbox",
+      "accuracy": 0.806,
+      "recall_at_1": 0.823,
+      "recall_at_5": 0.871,
+      "mAP": 0.845
+    },
+    {
+      "model": "pruned_vit_arcface",
+      "display_name": "Pruned ViT",
+      "crop": "sam",
+      "accuracy": 0.862,
+      "recall_at_1": 0.878,
+      "recall_at_5": 0.898,
+      "mAP": 0.889
+    },
+    {
+      "model": "pruned_vit_arcface",
+      "display_name": "Pruned ViT",
+      "crop": "bbox",
+      "accuracy": 0.828,
+      "recall_at_1": 0.844,
+      "recall_at_5": 0.882,
+      "mAP": 0.861
+    },
+    {
+      "model": "wang_metric",
+      "display_name": "Yaowu Wang",
+      "crop": "sam",
+      "accuracy": 0.995,
+      "recall_at_1": 0.996,
+      "recall_at_5": 0.999,
+      "mAP": 0.997
+    },
+    {
+      "model": "wang_metric",
+      "display_name": "Yaowu Wang",
+      "crop": "bbox",
+      "accuracy": 0.835,
+      "recall_at_1": 0.852,
+      "recall_at_5": 0.887,
+      "mAP": 0.868
+    }
+  ]
+}
