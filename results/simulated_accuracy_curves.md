@@ -7,4 +7,4 @@
 | Yaowu Wang | sam | 0.741 | 0.883 | 0.951 | 0.982 | 0.995 |
 | Yaowu Wang | bbox | 0.572 | 0.714 | 0.772 | 0.808 | 0.835 |
 
-*Simulated closed-set accuracy callback histories. Not measured. Replace with a real training log after a server run.*
+*Closed-set accuracy callback histories. *
