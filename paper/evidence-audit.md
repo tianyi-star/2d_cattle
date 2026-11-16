@@ -46,10 +46,24 @@ Three consequences:
    built on these files would misrepresent invented data as experimental data.**
 3. **`git log --all` contains no real run artefact.** No `outputs/` path, no
    `summary_six_cells.json`, no `outputs/*/metrics.json` and no `rank_callback.json` was ever
-   committed. `.gitignore:501-507` excludes `outputs/`, `data/`, `*.pt`, `*.pth`, so the
-   measured files would be invisible even if they existed locally. `README.md:200` states
-   measured summaries "land in `outputs/summary_six_cells.json`" — that file has never
-   existed in this repository.
+   committed. `.gitignore` excludes `outputs/`, `data/`, `*.pt`, `*.pth`, so the measured files
+   would be invisible even if they existed locally. `README.md` states measured summaries "land in
+   `outputs/summary_six_cells.json`" — that file has never existed in this repository.
+
+4. **Both headline mechanisms were broken in the audited revision and are now fixed.** At
+   `104b5b6` the SAM arm wrote the same rectangle as the box arm (§3) and the pruning operator
+   removed nothing (§4), so neither the $\Delta_{\mathrm{SAM}}$ contrast nor the compression claim
+   was testable. Commit `ac69fb7` (`fix/sam-and-pruning`) fixes both; §3.1 and §4.1 give the
+   verified current behaviour. **What has not changed is that no recognition result has been
+   measured** — the machinery now exists, the experiment does not.
+
+---
+
+## 1.1 Status legend used in this audit
+
+Each finding carries one of: **open** (still true), **fixed** (`fix/sam-and-pruning`), or
+**partly addressed** (the mechanism exists, the measurement does not). As of `ac69fb7`: §3 and §4
+are fixed; §5, §6 and §11 items 4–9 are open; §11 items 6 and 11 are partly addressed.
 
 ---
 
@@ -61,24 +75,31 @@ Verified by reading every source file and by executing the pipeline (Section 7).
 | --- | --- | --- |
 | Manifest I/O, split construction, transforms | `src/data.py` | Present, functional |
 | ArcFace head, $s=64$, $m=0.5$ | `src/arcface.py` | Present, correct implementation of Deng et al. (2019) |
-| Three embedding networks | `src/models.py` | Present; see §4 for the pruning defect |
+| Three embedding networks | `src/models.py` | Present; structured pruning now removes units (§4) |
 | Training loop + Adam | `src/train.py` | Present, functional |
 | Rank-1/Rank-5 evaluation, cosine retrieval | `src/evaluate.py` | Present, functional, correct rank-k logic |
 | Rank callback during training | `src/callbacks.py` | Present, functional |
-| Param/FLOP accounting | `src/models.py:202-236` | Present; hook-based MAC count, excludes ArcFace matrix as documented |
-| Detector/SAM front-end | `src/preprocess.py` | **Stub — see §3** |
+| Param/MAC accounting | `src/models.py` | Present; hook-based MAC count, excludes ArcFace matrix as documented |
+| Detector/SAM front-end | `src/preprocess.py` + `src/sam_mask.py` | Implemented (§3); box-prompted mask, disk cache, hard failure on missing weights |
+| Seeded 2×3 runner | `scripts/run_all_cells.sh` | Present; timestamped exclusive results dir, refuses to overwrite (§5) |
+| Aggregation / placeholder rejection | `src/aggregate.py` | Present; raises `NotAMeasurement` for stale, missing, non-finite, placeholder-tagged or wrong-arm metrics |
 | Shared config | `configs/experiment.yaml`, `configs/experiment_cpu.yaml` | Present |
-| Path config | `configs/path.yaml` | Present; all data/weight paths empty |
-| Six-cell runner | `scripts/run_six_cells.sh` | Present; runs on **synthetic** data (see §5). Ends by calling `python3 -m src.simulate_results`, a module that **does not exist** (renamed to `src/results.py`), so the runner terminates with `ModuleNotFoundError` on its final line. Same stale reference at `README.md:199`. |
-| Synthetic generator | `src/make_synthetic.py` | Present; draws coloured ellipses, explicitly "solely to verify the pipeline" (`README.md:213`) |
+| Path config | `configs/path.yaml` | Present; data/weight paths empty, SAM settings added |
+| Synthetic smoke runner | `scripts/run_six_cells.sh` | Present; runs on **synthetic** data and is now labelled a smoke test (§5) |
+| Synthetic generator | `src/make_synthetic.py` | Present; draws coloured ellipses, explicitly "solely to verify the pipeline" |
+| Tests | `tests/` | 45 CPU tests, 1 skipped (opt-in real-checkpoint) |
 
-## 3. What does not exist: the SAM masking stage
+## 3. The SAM masking stage: was a stub, now implemented
+
+**Status: fixed in `fix/sam-and-pruning` (commit `ac69fb7`).** The finding below is kept as the
+record of what the audited `main` revision contained; the current state is stated at the end of
+this section.
 
 `README.md` and `paper/method.tex` describe a two-arm crop protocol whose entire scientific
 contrast is SAM-masked back-pattern crops ($I_{\mathrm{sam}}$) versus YOLO box crops
-($I_{\mathrm{box}}$). The code cannot produce $I_{\mathrm{sam}}$.
+($I_{\mathrm{box}}$). At commit `104b5b6` the code could not produce $I_{\mathrm{sam}}$.
 
-`src/preprocess.py:165-168`:
+`src/preprocess.py:165-168` at that revision:
 
 ```python
 if crop == CROP_SAM and sam_weights:
@@ -87,24 +108,48 @@ if crop == CROP_SAM and sam_weights:
     pass
 ```
 
-Inside the `crop == CROP_SAM` branch, the code does nothing and then writes `crop_img`, which
-is the plain rectangle (`src/preprocess.py:166`). So the `sam` arm and the `bbox` arm produce
-**byte-identical crops** whenever the detector path is used. `sam_weights` is never loaded;
-`ultralytics` is the only model dependency actually imported. There is no SAM implementation,
-no mask application, no $\operatorname{Crop}(I \odot M, B_M)$ anywhere in the tree.
+Inside the `crop == CROP_SAM` branch, the code did nothing and then wrote `crop_img`, which is the
+plain rectangle. So the `sam` arm and the `bbox` arm produced **byte-identical crops** whenever the
+detector path was used. `sam_weights` was never loaded; `ultralytics` was the only model dependency
+actually imported. There was no SAM implementation and no $\operatorname{Crop}(I \odot M, B_M)$
+anywhere in the tree.
 
-The only way currently to obtain a "SAM" manifest is `--ready-dir`
-(`src/preprocess.py:37-93`), which simply ingests a folder of already-background-removed
-images that the user supplies. No such folder is in the repository; `data/` is gitignored and
-absent.
+The only way to obtain a "SAM" manifest at that revision was `--ready-dir`, which ingested a folder
+of already-background-removed images supplied by the user. No such folder was in the repository.
 
-**Therefore the central $\Delta_{\mathrm{SAM}}$ comparison has never been executed by this
-codebase, and cannot be, as committed.**
+### 3.1 Current state after the fix
 
-## 4. The "pruned ViT" performs no pruning at the configured ratio
+`src/sam_mask.py` (604 lines) now implements the stage, and `src/preprocess.py` calls it for
+`--crop sam`. Verified by reading the code and running its tests (13 SAM tests pass on CPU with no
+weights required; the opt-in real-checkpoint test is skipped by default):
 
-`README.md` and `paper/method.tex` present `pruned_vit_arcface` as the proposed contribution:
-task-specific structured pruning of attention heads and MLP channels with subsequent fine-tuning.
+| Property | Implementation |
+| --- | --- |
+| Prompt | detector box only; returns mask $M$; writes $\operatorname{Crop}(I \odot M, B_M)$ |
+| Backends | `segment_anything` (`vit_h`/`vit_l`/`vit_b`), `mobile_sam` (`vit_t`), `ultralytics` |
+| Default | `model_type="vit_b"`, `backend="auto"` (`src/sam_mask.py:221`; `configs/path.yaml`) |
+| Loading | lazy — a bbox-only run never allocates a segmenter |
+| Cache | on disk, keyed by image id + detection box + segmenter fingerprint; `CACHE_SCHEMA = "sam-mask-v1"` |
+| Refinement | clip to box → largest connected component → hole fill → reject below `min_area_frac` (default 0.005) |
+| Missing weights | `SamWeightsMissing` raised; preprocessing aborts before writing any crop or manifest |
+| Config | `--sam-model-type/--sam-backend/--sam-device/--sam-cache-dir`; `sam_cache_dir: data/sam_mask_cache` |
+
+The failure mode this fixes is subtle and worth naming: the old `pass` branch meant a researcher
+could run the "SAM ablation" to completion, see two columns of numbers, and never learn that both
+columns came from identical pixels. The new code removes the silent fallback deliberately — a
+missing checkpoint raises instead of degrading.
+
+**What is still true:** no $\Delta_{\mathrm{SAM}}$ has been *measured* on real data. The code can
+now produce both arms; no run on the archive exists.
+
+## 4. Structured pruning: was inert, now physically removes units
+
+**Status: fixed in `fix/sam-and-pruning` (commit `ac69fb7`).** The finding below is the record of
+the audited `main` revision.
+
+At commit `104b5b6`, `README.md` and `paper/method.tex` presented `pruned_vit_arcface` as the
+proposed contribution: task-specific structured pruning of attention heads and MLP channels with
+subsequent fine-tuning.
 
 I instantiated the model from the repository's own code and config
 (`configs/experiment.yaml`, `vit_prune_ratio: 0.25`, `vit_name: vit_tiny_patch16_224`) and
@@ -120,27 +165,65 @@ parameters, pruned vs unpruned: 5,623,232 vs 5,623,232
 
 Two independent defects:
 
-* **Head pruning is a no-op at ratio 0.25** — `vit_tiny_patch16_224` has 3 heads, and
-  `int(3 × 0.25) = 0` (`src/models.py:112`).
-* **MLP pruning is a silent no-op at any ratio** — `src/models.py:129-136` writes
-  `mlp.fc1.weight[drop_idx].zero_()`. Advanced indexing returns a *copy*, so the in-place
-  write never reaches the parameter. Verified directly: 0 of 192 intended rows were zeroed.
+* **Head pruning was a no-op at ratio 0.25** — `vit_tiny_patch16_224` has 3 heads, and
+  `int(3 × 0.25) = 0`.
+* **MLP pruning was a silent no-op at any ratio** — the code wrote
+  `mlp.fc1.weight[drop_idx].zero_()`. Advanced indexing returns a *copy*, so the in-place write
+  never reached the parameter. Verified directly: 0 of 192 intended rows were zeroed.
 
-So `pruned_vit_arcface` is, in the repository as committed, architecturally identical to an
-unpruned ViT-Tiny. Reported parameters (5,623,232) and MACs (1,074,757,632) are those of the
-unpruned network. **Any claim that pruning reduced parameters or FLOPs, or that a pruned model
-was evaluated, is unsupported.** `paper/method.tex:290-324` additionally specifies a
-*discriminability-ratio* importance criterion $I(u)=\Delta(\phi)-\Delta(\phi^{(-u)})$; the code
-ranks heads and channels by plain weight magnitude (`src/models.py:107-131`). The method
-described in the draft and the method implemented in code are different methods.
+So `pruned_vit_arcface` was, at that revision, architecturally identical to an unpruned ViT-Tiny.
 
-## 5. The only end-to-end runs this repo can perform use synthetic ellipse images
+### 4.1 Current state after the fix
+
+Re-measured independently on `fix/sam-and-pruning`, by instantiating both variants and calling the
+repository's own `count_parameters` and `estimate_flops` at 224 × 224:
+
+| Variant | Parameters | MACs | Heads | MLP channels |
+| --- | ---: | ---: | ---: | ---: |
+| ViT-Tiny, unpruned (ρ = 0) | 5,623,232 | 1,074,757,632 | 36 | 9,216 |
+| ViT-Tiny, pruned (ρ = 0.25) | **4,144,064** | **784,269,312** | 24 | 6,912 |
+| Delta | −1,479,168 (−26.3 %) | −290,488,320 (−27.0 %) | −12 | −2,304 |
+
+`units_to_prune` now applies half-up rounding with a floor of one unit, so `3 × 0.25` removes 1
+head rather than 0; the tensors are rebuilt without the dropped rows and columns, so
+`count_parameters` genuinely falls; and a request that would remove nothing raises rather than
+training an unpruned model under a pruned name. 12 pruning tests pass, including one that pins the
+old advanced-indexing no-op as a regression.
+
+### 4.2 The criterion discrepancy — still open, and the paper must not paper over it
+
+**`paper/method.tex` §`sec:pruning` specifies a discriminability-ratio criterion
+$I(u)=\Delta(\phi)-\Delta(\phi^{(-u)})$ with $\Delta = S_{\mathrm{inter}}/(S_{\mathrm{intra}}+\varepsilon)$
+on a calibration split. The implementation ranks by weight magnitude**
+(`_magnitude_scores` = `weight.abs().mean(dim=1)`; the prune report literally records
+`"criterion": "weight_magnitude"`). `src/models.py` carries a `TODO(paper-alignment)` saying so.
+
+These are different methods with different costs — the $\Delta$ criterion needs a calibration split
+and one forward pass per candidate unit. The manuscript now describes magnitude ranking as what is
+implemented, and presents the $\Delta$ criterion explicitly as an unevaluated direction. It must
+not claim the $\Delta$ criterion was used. `paper/method.tex` itself still contains the old text and
+should be corrected or removed before submission.
+
+## 5. The only *synthetic-data* runs are ellipse images; real runs now have a runner
 
 `scripts/run_six_cells.sh` generates data with `src/make_synthetic.py --mode paired` then
 trains all six cells on it. `src/make_synthetic.py:24-39` renders each "identity" as a
 randomly coloured ellipse with random dots on a black field; the "pasture clutter" is a
 sinusoidal gradient plus Gaussian noise (`src/make_synthetic.py:44-57`). These are not cattle,
-not UAV imagery, and not the Zenodo archive.
+not UAV imagery, and not the Zenodo archive. That script is now labelled a synthetic smoke test.
+
+The measured path is `scripts/run_all_cells.sh` + `src/aggregate.py`, added in
+`fix/sam-and-pruning`. It trains the 2 × 3 cells with seeded splits into an exclusively created,
+UTC-timestamped directory under `results/`, writes the full configuration and git commit to
+`run_config.txt` before training, refuses to overwrite an existing run directory, and aggregates
+only the `metrics.json` files produced by that run. `src/aggregate.py` raises `NotAMeasurement` for
+a missing, stale, non-finite, placeholder-tagged, or wrong-arm metrics file, so nothing in the
+aggregation path can synthesise a figure. In prepared-data mode the two crop trees must resolve to
+different directories, so $\Delta_{\mathrm{SAM}}$ cannot be zero by a pointing error. 10
+runner/aggregate tests pass on CPU.
+
+**No run of that script has been executed on the archive.** The machinery exists; the measurement
+does not.
 
 `README.md:213` is explicit: the generator exists "solely to verify the pipeline in the absence
 of the archive; its outputs are not scientific results."
@@ -168,9 +251,14 @@ one class of quantitative claim this audit can fully support.
 | Backbone | `configs/experiment_cpu.yaml` params | `configs/experiment.yaml` params | MACs @224 (both) |
 | --- | ---: | ---: | ---: |
 | `yolo_arcface` (CSP-style stack, emb 512 / 128) | 1,635,232 | 1,832,224 | 242,311,168 |
-| `pruned_vit_arcface` (ViT-Tiny/16, no effective pruning) | 5,549,120 | 5,623,232 | 1,074,757,632 |
+| `pruned_vit_arcface`, pruned ρ=0.25 (ViT-Tiny/16) | — | 4,144,064 | 784,269,312 |
+| `pruned_vit_arcface`, unpruned (ViT-Tiny/16) | 5,549,120 | 5,623,232 | 1,074,757,632 |
 | `wang_metric` (ResNet-50, emb 512) | — | 24,557,120 | 4,088,184,832 |
 | `wang_metric` (ResNet-18, emb 128) | 11,242,176 | — | — |
+
+The pruned row is new as of `fix/sam-and-pruning`; before that commit the "pruned" and unpruned
+counts were identical (§4). Both are retained here because the manuscript's Table 4 reports both
+and the pair is what makes the compression legible.
 
 Notes that matter for honesty:
 
@@ -255,11 +343,11 @@ it; "gap" means the repository or author must supply something.
 | # | CEA requirement | Status |
 | --- | --- | --- |
 | 1 | English throughout; no separate non-English abstract | **Have.** `paper/manuscript-cea.md` is English-only; no Chinese abstract block. |
-| 2 | Title, then Abstract as one paragraph of ~250 words, no citations, no undefined abbreviations | **Have.** Abstract measured at 270 words, single paragraph, zero citations; each abbreviation (UAV, MAC) expanded at first use. |
+| 2 | Title, then Abstract as one paragraph of ~250 words, no citations, no undefined abbreviations | **Have.** Abstract measured at 272 words, single paragraph, zero citations; each abbreviation (UAV, MAC) expanded at first use. |
 | 3 | 4–6 keywords | **Have.** Six keywords as listed. |
 | 4 | Numbered sections: 1 Introduction, 2 Related work, 3 Materials and methods, 4 Results, 5 Discussion, 6 Conclusions | **Have.** Exactly this skeleton, with Results and Discussion kept as separate top-level sections as CEA expects. |
-| 5 | Materials and methods with explicit data-acquisition and experimental-setup subsections | **Partial.** §3.2 and §3.6 exist and are structured correctly, but acquisition parameters (altitude, GSD, sensor, dates, site) and the annotation protocol are `【待补】` because the repository records none (§6). |
-| 6 | Results must rest on real data with replication and dispersion | **Gap — blocking.** §4 exists with an empty table (§1, §5). |
+| 5 | Materials and methods with explicit data-acquisition and experimental-setup subsections | **Partial.** §3.2 and §3.6 exist and are structured correctly, and both are written as implemented rather than aspirational (the SAM stage and the seeded runner are real). But acquisition parameters (altitude, GSD, sensor, dates, site) and the annotation protocol are `【待补】` because the repository records none (§6). |
+| 6 | Results must rest on real data with replication and dispersion | **Gap — blocking.** §4 exists with an empty table (§1, §5). The runner and the aggregation that rejects placeholders now exist, so the gap is a missing run rather than missing machinery. |
 | 7 | Discussion that is agronomic/practical, not a restatement of numbers | **Have.** §5 is organised around farm consequences: pen-context shortcuts and transfer failure, on-board versus deferred inference, identification as a join key for monitoring records, error clustering on hard images, open-set rejection. |
 | 8 | CRediT author statement | **Drafted.** Single author, full role list; needs author confirmation. |
 | 9 | Declaration of competing interest | **Have.** Standard declaration. |
@@ -279,22 +367,28 @@ marked.
 
 | Claim | Path |
 | --- | --- |
-| Three embedding networks are defined and constructible | `src/models.py:57-181`; measured §7 |
-| One shared ArcFace head, $s$=64, $m$=0.5, applied to all three | `src/arcface.py`; `configs/experiment.yaml:14-16` |
+| Three embedding networks are defined and constructible | `src/models.py`; measured §7 |
+| One shared ArcFace head, $s$=64, $m$=0.5, applied to all three | `src/arcface.py`; `configs/experiment.yaml` |
 | ArcFace is implemented per Deng et al. (2019), cos-margin with the $\cos(\pi-m)$ guard | `src/arcface.py:44-58` |
 | Evaluation is cosine retrieval over $\ell_2$-normalised embeddings, deduplicated by identity | `src/evaluate.py:97-121` |
 | Rank-k counts identities, not images (duplicates suppressed) | `src/evaluate.py:106-119` |
 | $\Delta_{\mathrm{SAM}}$ is defined as Rank-1(sam) − Rank-1(bbox) | `src/evaluate.py:42-49` |
-| Param count excludes the ArcFace weight matrix | `src/models.py:26-28`; `src/protocol.py:47-50` |
-| Parameter counts in §7 | Reproduced by running `count_parameters` |
-| MAC counts in §7 | Reproduced by running `estimate_flops` |
-| Training uses Adam, lr 1e-4, wd 1e-4, 30 epochs, batch 8, 224² | `configs/experiment.yaml`; `src/train.py:93-97` |
+| Param count excludes the ArcFace weight matrix | `src/models.py`; `src/protocol.py:47-50` |
+| Parameter and MAC counts in §7 (pruned and unpruned) | Reproduced by running `count_parameters` / `estimate_flops` |
+| Structured pruning physically removes units; params and MACs fall | `src/models.py`; re-measured: 5,623,232→4,144,064, 1,074,757,632→784,269,312 (§4.1) |
+| Pruning is ranked by weight magnitude, not by $\Delta(\phi)$ | `src/models.py` `_magnitude_scores`, `"criterion": "weight_magnitude"`; `TODO(paper-alignment)` (§4.2) |
+| SAM masking produces $I_{\mathrm{sam}} \ne I_{\mathrm{box}}$ from the same box | `src/sam_mask.py`; `tests/test_sam_masking.py` (13 tests) |
+| Mask cache suppresses a second segmenter call | `src/sam_mask.py` `MaskCache`, `CACHE_SCHEMA`; tested |
+| Missing SAM weights abort preprocessing rather than falling back | `SamWeightsMissing`; `tests/test_sam_masking.py` |
+| Runs are seeded into a timestamped, exclusive results directory | `scripts/run_all_cells.sh` |
+| Aggregation rejects stale / placeholder / wrong-arm metrics | `src/aggregate.py` `NotAMeasurement`; `tests/test_runner_and_aggregate.py` |
+| Training uses Adam, lr 1e-4, wd 1e-4, 30 epochs, batch 8, 224² | `configs/experiment.yaml`; `src/train.py` |
 | Augmentation = flip + colour jitter + ImageNet norm | `src/data.py:132-150` |
 | The six cells are the 3×2 product of backbone and crop | `src/protocol.py:84-87` |
-| Dataset identity: Zenodo 10.5281/zenodo.13364663, Wang 2024, CC BY 4.0, 96 Simmental | Zenodo API (§6); `README.md:100-115` |
-| Companion code/records: Zenodo 10.5281/zenodo.13361729 | Zenodo API (§6), cited in `README.md:77` |
+| Dataset identity: Zenodo 10.5281/zenodo.13364663, Wang 2024, CC BY 4.0, 96 Simmental | Zenodo API (§6); `README.md` |
+| Companion code/records: Zenodo 10.5281/zenodo.13361729 | Zenodo API (§6), cited in `README.md` |
 | Software licence Apache-2.0 | `LICENSE`; `CITATION.cff` |
-| Funding: Songshan Laboratory 241110210200; Henan Major S&T 221100210600 | `README.md:340-342` |
+| Funding: Songshan Laboratory 241110210200; Henan Major S&T 221100210600 | `README.md` |
 
 ### 10.2 Claims the repository does NOT support — must not be written
 
@@ -330,12 +424,13 @@ Ordered by how much they block a CEA submission.
 3. ~~**A working pruning operator.**~~ **Fixed in `fix/sam-and-pruning`.** `int(heads*ratio)` replaced by half-up rounding with a floor of one unit (3 heads → 1 dropped at 0.25); MLP rows are written with `index_put_` / advanced assignment on the parameter, not on a copy; units are physically removed so `count_parameters` falls (5,623,232 → 4,144,064 at ratio 0.25) and MACs fall too. **The criterion is weight magnitude, not the discriminability ratio of `paper/method.tex:290-324`** — that discrepancy is now an explicit `TODO(paper-alignment)` in `src/models.py` and must be resolved in the paper text, not silently.
 4. **Data acquisition and annotation section.** Site, dates, sensor, altitude, GSD, number of flights, identity labelling, train/gallery/query counts per identity.
 5. **Validation split** if the F-ODS narrative is kept; otherwise remove F-ODS from the paper to match the code.
-6. **Repeated runs** (≥3 seeds) with mean ± SD, or an explicit statement that results are single-run.
+6. **Repeated runs** (≥3 seeds) with mean ± SD, or an explicit statement that results are single-run. *Partly addressed:* `scripts/run_all_cells.sh --seeds "0 1 2"` produces per-seed manifests and run directories and records the seed list in `run_config.txt`, so the mechanism exists; the runs themselves have not been done.
 7. **Latency measurement** on named hardware, median of N calls after warm-up.
 8. **Ethics statement** and animal-welfare declaration.
 9. **CRediT roles**, competing-interest declaration, author-approved acknowledgements.
 10. ~~**Fix the stale `src.simulate_results` reference.**~~ **Fixed in `fix/sam-and-pruning`.** The call is gone from `scripts/run_six_cells.sh`; that script is now labelled a synthetic smoke test and `scripts/run_all_cells.sh` is the measured runner.
-11. **Delete or clearly re-label `results/`**, whose current disclaimers were stripped (§1). Leaving them as-is invites the exact misrepresentation this audit exists to prevent.
+11. **Delete or clearly re-label `results/`**, whose current disclaimers were stripped (§1). Leaving them as-is invites the exact misrepresentation this audit exists to prevent. *Partly addressed:* `src/aggregate.py` now refuses to aggregate a placeholder-tagged or stale `metrics.json`, so the old constants cannot re-enter a reported table through the pipeline; the files themselves are still present.
+12. **Correct or remove `paper/method.tex` §`sec:pruning`**, which still specifies the discriminability-ratio criterion the code does not implement (§4.2). The manuscript text is now aligned; this draft file is not.
 
 ## 12. Reference verification
 

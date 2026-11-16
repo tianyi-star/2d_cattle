@@ -34,12 +34,12 @@ ResNet-50 — are trained under one shared additive angular margin objective wit
 resolution, embedding dimension, optimiser and epoch budget, and evaluated by cosine retrieval on
 one frozen identity-disjoint split. The 2 × 3 design isolates mask-based purification from
 backbone capacity, and reports parameters and multiply–accumulates for the inference network
-alone, excluding the training classifier. We describe the protocol and its reference
-implementation, and report each backbone's budget: 1.83 M, 5.62 M and 24.56 M parameters at 242 M,
-1075 M and 4088 M multiply–accumulates per 224 × 224 image. Separating crop purification from
-backbone capacity is, we argue, a precondition for interpreting aerial cattle re-identification on
-a working farm. 【待补: 六单元格检索结果一句话摘要（含最佳单元格 Rank-1 与 Δ_SAM 方向），
-在实测完成后补入，不得以占位数值代替】
+alone. Each backbone's budget is 1.83 M, 5.62 M and 24.56 M parameters at 242 M, 1075 M and 4088 M
+multiply–accumulates per 224 × 224 image; structured pruning removes 26 % of the transformer's
+parameters and 27 % of its multiply–accumulates, to 4.14 M and 784 M. Separating crop purification
+from backbone capacity is, we argue, a precondition for interpreting aerial cattle
+re-identification on a working farm. 【待补: 六单元格检索结果一句话摘要（含最佳单元格 Rank-1 与
+Δ_SAM 方向），在实测完成后补入，不得以占位数值代替】
 
 **Keywords:** cattle re-identification; unmanned aerial vehicle; precision livestock farming;
 coat pattern; metric learning; background suppression
@@ -130,18 +130,28 @@ class-weight matrix scales with the number of enrolled animals and is discarded 
 Reporting it that way prevents a backbone from appearing cheaper or more expensive than it is
 merely because the study happened to enrol more animals.
 
-Fourth, we release a reference implementation that enforces the protocol, including the retrieval
-metric, the paired-crop manifests and the cost accounting, so that the comparison can be repeated
-on other farms and other breeds without re-deriving the conditions.
+Fourth, we implement the two stages that make the design executable rather than aspirational, and
+report the compression they achieve. The masking stage is a working box-prompted segmentation
+front-end with a disk-cached mask store and a hard failure on missing weights, so the purified arm
+is produced by the pipeline rather than assumed; the pruning stage physically removes attention
+heads and feed-forward channels under a magnitude criterion, so the transformer's cost genuinely
+falls — 26.3 % of parameters and 27.0 % of multiply–accumulates at a removal rate of 0.25. We
+state plainly that the pruning criterion is weight magnitude and not the embedding-geometry
+criterion that motivated the design, and we do not claim the latter's properties for the former.
+
+Fifth, we release a reference implementation that enforces the protocol, including the retrieval
+metric, the paired-crop manifests, the seeded six-cell runner, the aggregation step that rejects
+placeholders, and the cost accounting, so that the comparison can be repeated on other farms and
+other breeds without re-deriving the conditions.
 
 The remainder of the paper is organised as follows. Section 2 reviews individual identification
 in livestock, the use of aerial imagery in pasture management, and the metric-learning losses on
 which the shared objective is based. Section 3 gives the materials and methods, including data
-acquisition and annotation, the crop construction, the three backbones, the objective, and the
-experimental setup. Section 4 reports retrieval performance and computational cost for the six
-cells. Section 5 discusses what the design implies for on-farm use, where it can fail, and what
-would be required before an identification system of this kind could be trusted as a management
-record. Section 6 concludes.
+acquisition and annotation, the crop construction, the three backbones, the objective, the
+structured pruning procedure, and the experimental setup. Section 4 reports retrieval performance
+and computational cost for the six cells. Section 5 discusses what the design implies for on-farm
+use, where it can fail, and what would be required before an identification system of this kind
+could be trusted as a management record. Section 6 concludes.
 
 ## 2. Related work
 
@@ -396,12 +406,43 @@ The detector and the segmenter are shared preprocessing. They are identical for 
 for both arms, they are not trained as part of this study, and their cost is reported separately
 from the recognition cost so that it cannot be attributed to one backbone.
 
-<!-- Implementation status. The public reference implementation supplies this stage in two forms:
-     (i) ingestion of pre-segmented per-identity folders (src/preprocess.py:37-93), and
-     (ii) a detector-driven path (src/preprocess.py:110-180). In the committed revision the
-     detector-driven path writes the plain box crop for both arms (src/preprocess.py:165-168),
-     i.e. the mask is not applied. Any Δ_SAM reported from this code must therefore come from
-     manifests produced by an external masking step. See paper/evidence-audit.md section 3. -->
+The segmentation stage is implemented in the reference code as follows, and this description
+matches what executes rather than what is planned. The segmenter is loaded lazily on the first
+masking call, so a run restricted to the control arm never imports or allocates a segmentation
+model. Three backends are supported: the reference `segment_anything` package with `vit_h`,
+`vit_l` or `vit_b` weights; the `mobile_sam` package with `vit_t`; and the `ultralytics`
+implementation already required by the detector path. The default model type is `vit_b`, and the
+default backend is selected automatically from the installed packages.
+
+Each mask is refined before it is used: it is clipped to the detector box, reduced to its largest
+connected component so that a nearby animal cannot contribute an island of foreground, hole-filled,
+and rejected outright if its area falls below a configurable fraction of the box area (0.5 % by
+default). A rejected mask raises rather than falling back to the rectangle, because a silent
+fallback would make the two arms byte-identical and destroy the contrast the protocol exists to
+measure.
+
+Masks are cached on disk, keyed jointly by the image identity, the detection box, and a
+fingerprint of the segmenter configuration, with the cache schema versioned so that a stale entry
+cannot be read as a current mask. Repeated epochs over one manifest therefore segment each image
+once and thereafter read a small packed array instead of re-running the segmenter, which matters
+because the segmenter is by far the most expensive stage per image. The cache directory, model
+type, backend and device are all configurable through the path configuration and the preprocessing
+entry point. If the requested segmenter weights are absent, preprocessing aborts before writing any
+crop or manifest, so a partially built or structurally vacuous arm cannot be produced by accident.
+
+<!-- Implementation traceability, verified by reading the code and running its tests:
+     src/sam_mask.py implements the masker, refinement (clip/largest-component/hole-fill/
+     min-area rejection at min_area_frac default 0.005), the versioned disk cache
+     (CACHE_SCHEMA = "sam-mask-v1"), the lazy loader, and SamWeightsMissing.
+     Defaults: model_type="vit_b" (src/sam_mask.py:221), backend "auto", cache dir
+     data/sam_mask_cache (configs/path.yaml). src/preprocess.py --crop sam calls it;
+     the bbox path is unchanged. 13 SAM tests pass on CPU without real weights;
+     the opt-in real-checkpoint test (tests/test_sam_real_weights.py) is skipped by
+     default and was verified separately by the author against sam_vit_b_01ec64.pth.
+     See paper/evidence-audit.md section 3. -->
+
+【待补: 掩膜质量统计——前景面积占比分布、被 min_area_frac 拒绝的图像数量与比例、
+      以及人工抽查的掩膜合格率。这些量可在两臂预处理完成后从缓存直接统计。】
 
 ### 3.4 Recognition backbones
 
@@ -420,14 +461,16 @@ performance on this data.
 attention heads per block and a 192-dimensional token width, taking the class token as the pooled
 representation and projecting it linearly to the embedding dimension. A Vision Transformer of this
 size has global receptive field from the first block, which is the property that motivates its use
-on a spatially extended pattern such as a coat.
+on a spatially extended pattern such as a coat. This backbone is additionally evaluated after
+structured pruning at a removal rate of $\rho = 0.25$, described in Section 3.8; the pruned and
+unpruned variants are treated as distinct cells of the cost comparison and are never conflated.
 
 *Residual network.* The third backbone is a ResNet-50 trunk with the classification layer removed
 and a linear projection to the embedding dimension. It represents the capacity extreme of the
 comparison and the architecture family most frequently used in the cattle-identification
 literature.
 
-<!-- All three are constructed in src/models.py:57-181 and were instantiated during the audit.
+<!-- All three are constructed in src/models.py and were instantiated during the audit.
      Parameter and MAC figures in Table 4 were produced by calling the repository's own
      count_parameters() and estimate_flops() at 224x224 with configs/experiment.yaml. -->
 
@@ -508,6 +551,43 @@ figures are best-observed rather than single-final-epoch values.
 【待补: 实际报告结果所用的训练轮次与是否使用学习率调度；若与上表不同，须给出最终采用的
 配置并说明为何调整】
 
+The six cells are produced by a single orchestrating script rather than by hand, so that the
+shared settings cannot drift between cells. `scripts/run_all_cells.sh` accepts a data root, a seed
+list and the two crop arms, and then builds one seeded manifest per seed and per arm, trains and
+evaluates every cell, and aggregates the result. Three properties of that script are worth stating
+because they bound what the reported numbers can mean.
+
+First, runs are seeded and the seed is recorded. Each seed produces its own manifest, its own run
+directory under `outputs/seed_<seed>/<crop>/<model>/`, and its own copy of the metrics, so repeated
+runs are independent in the split as well as in initialisation. The default is a single seed; CEA's
+expectation of replication requires at least three, and the script takes a seed list for that
+purpose.
+
+Second, the output is timestamped and never overwritten. The run directory is created exclusively
+under a UTC timestamp, the script aborts before writing anything if a target run directory already
+holds files, and the exact configuration — seeds, split fractions, crop arms, model list, segmenter
+type and backend, git commit, Python version and start time — is written to the run directory
+before training begins. A reported table can therefore be tied to a specific commit and a specific
+configuration after the fact.
+
+Third, aggregation refuses to produce a placeholder. The summary step reads only the `metrics.json`
+files written by this run, and rejects a file that is stale relative to the run start, missing,
+non-finite, tagged as a placeholder, or attributable to the wrong crop arm. Nothing in the
+aggregation path can synthesise a number; if a cell did not run, the table cannot be completed. In
+prepared-data mode the script additionally requires the two crop trees to be distinct directories,
+so that the mask contrast cannot be zero by construction through a pointing error.
+
+<!-- Traceability: scripts/run_all_cells.sh (seeded 2x3 runner, exclusive timestamped results
+     dir, run_config.txt with git sha and segmenter settings, refuses to overwrite);
+     src/aggregate.py (NotAMeasurement raised for missing/stale/non-finite/placeholder/
+     wrong-arm metrics); prepared mode checks sam/ and bbox/ resolve to different paths.
+     10 runner/aggregate tests pass on CPU.
+     See paper/evidence-audit.md sections 8 and 11. -->
+
+Because the aggregation cannot emit a placeholder, Table 3 is left entirely empty in this draft.
+The six cells will be filled only from a completed run of this script, with at least three seeds,
+and the table will then carry the mean and dispersion across seeds rather than a single value.
+
 【待补: 训练硬件（GPU 型号、数量）、单细胞训练时长、总计算开销】
 
 ### 3.7 Evaluation protocol and cost accounting
@@ -552,6 +632,55 @@ backbone was being measured.
 【待补: 推理延迟——单张图像、批大小 1、指定硬件、热身若干次后取中位数的实测值；
       须写明硬件型号与热身/计时次数】
 
+### 3.8 Structured pruning of the Vision Transformer
+
+The transformer branch is additionally evaluated after structured pruning, and the pruned and
+unpruned networks are reported separately throughout. Two structural unit types are removed: whole
+attention heads, and whole channels of the feed-forward block.
+
+*Selection criterion.* Units are ranked by weight magnitude — the mean absolute weight of a unit,
+taken over the query, key and value rows for an attention head and over the corresponding row of
+the first feed-forward projection for a channel — and the lowest-ranked units are removed. This is
+a standard magnitude criterion. It is deterministic, requires no calibration pass, and imposes no
+additional forward passes during selection, which matters because the alternative would multiply
+the cost of the pruning stage by the number of units considered.
+
+We state explicitly what this criterion is not. A criterion that ranks a unit by the change it
+induces in embedding geometry — for instance the drop in a discriminability ratio,
+$I(u) = \Delta(\phi) - \Delta(\phi^{(-u)})$ with
+$\Delta = S_{\mathrm{inter}} / (S_{\mathrm{intra}} + \varepsilon)$ measured on a calibration split
+— is a plausible and in our view attractive alternative, and it is closer to what coat-pattern
+re-identification actually needs, since it asks directly whether a unit keeps images of one animal
+together and images of different animals apart. That criterion was **not** implemented and was
+**not** used to produce any result in this paper. We mention it only to mark it as a direction for
+future work, and we do not claim its properties for the magnitude criterion we do use.
+
+*Removal rate.* The removal rate $\rho$ is applied per block with half-up rounding and a floor of
+one unit, so that a requested removal cannot silently round to nothing. On a 3-head block at
+$\rho = 0.25$ this removes one head per block, which is 12 of 36 heads over 12 blocks; on a
+768-channel feed-forward block it removes 192 channels, or 2,304 of 9,216 over the network. Units
+are physically removed rather than masked: the affected tensors are rebuilt without the dropped
+rows and columns, so the parameter count and the multiply–accumulate count both fall, as Table 4
+reports. A request for pruning that would remove nothing raises rather than training an unpruned
+network under a pruned name, and the realised pruning is recorded in the run metadata and the
+evaluation output so that a reported cell can be matched to the architecture that produced it.
+
+<!-- Implementation traceability:
+     src/models.py _magnitude_scores() = weight.detach().abs().mean(dim=1);
+     units_to_prune() applies half-up rounding with a floor of one; the pruned tensors are
+     rebuilt (qkv rows, proj columns, fc1 rows, fc2 columns) so count_parameters falls;
+     the prune report carries "criterion": "weight_magnitude".
+     Measured at rho=0.25: params 5,623,232 -> 4,144,064, MACs 1,074,757,632 -> 784,269,312,
+     heads 36 -> 24, MLP channels 9,216 -> 6,912.
+     The code carries a TODO(paper-alignment) at src/models.py recording that paper/method.tex
+     sec:pruning specifies a discriminability-ratio criterion that is NOT implemented; this
+     section is the aligned text. 12 pruning tests pass, including one that pins the old
+     advanced-indexing no-op as a regression.
+     See paper/evidence-audit.md section 4. -->
+
+【待补: 剪枝后是否微调、微调轮次与学习率；若未微调，须说明剪枝网络的权重直接来自
+      未剪枝训练结果还是重新训练】
+
 ## 4. Results
 
 ### 4.1 Retrieval performance of the six cells
@@ -572,16 +701,18 @@ only in the network.
 *Table 3. Retrieval accuracy on the frozen identity-disjoint split, 96 identities.
 $I_{\mathrm{sam}}$ = mask-purified dorsal coat; $I_{\mathrm{box}}$ = detector box crop.
 $\Delta_{\mathrm{SAM}}$ is rank-1 on the purified arm minus rank-1 on the box arm, computed per
-backbone. Each figure is to be read from `outputs/<cell>/metrics.json` of the corresponding
-completed run and cross-checked against `outputs/summary_six_cells.json`.*
+backbone. Each figure is to be read from the aggregated summary written by
+`scripts/run_all_cells.sh` (`summary_six_cells.md` in the timestamped run directory), which draws
+only on the per-cell `metrics.json` files produced by that run.*
 
-<!-- PROVENANCE. No value in Table 3 exists yet. The placeholder tables in results/metrics.json
-     and results/accuracy_curves.json are hard-coded constants generated by src/metrics.py and
-     src/results.py, whose own docstrings call them placeholders, and whose disclaimer text was
-     removed in commits 2e1e2d4/cdde8cc/ddaf922. They must not be used. See
-     paper/evidence-audit.md §1 for the full account, including the fact that
-     src/results.py:20-38 names the dictionary "_FINAL" while describing its contents as a
-     narrative "scenario". -->
+<!-- PROVENANCE. No value in Table 3 exists yet, and none may be written until
+     scripts/run_all_cells.sh has completed. The placeholder tables previously in
+     results/metrics.json and results/accuracy_curves.json are hard-coded constants generated by
+     src/metrics.py and src/results.py, whose own docstrings call them placeholders, and whose
+     disclaimer text was removed in commits 2e1e2d4/cdde8cc/ddaf922. They must not be used; the
+     new aggregation step (src/aggregate.py) rejects placeholder-tagged and stale metrics files
+     precisely so that they cannot re-enter through the back door.
+     See paper/evidence-audit.md sections 1 and 8. -->
 
 【待补: 每个单元格的 gallery/query 图像数与被评身份数（须与 Table 2 一致）】
 
@@ -595,10 +726,17 @@ Because both arms share their detections, their identity assignment and their im
 comparison is paired at the level of the animal, and the appropriate summary is the difference
 per backbone rather than a pooled difference.
 
+Both arms are now produced by the pipeline itself: the purified arm is generated by the
+box-prompted segmentation front-end described in Section 3.3, and the control arm by the box crop
+with the segmenter never instantiated. The contrast is therefore executable end to end, and the
+runner verifies before training that the two arms resolve to different image trees, so a
+$\Delta_{\mathrm{SAM}}$ of exactly zero cannot arise from a pointing error. What remains is the
+measurement itself, which this draft does not contain.
+
 【待补: 三个骨干各自的 Δ_SAM 数值，以及与之配套的自助法置信区间或配对检验结果】
 
-【待补: 掩膜质量对 Δ_SAM 的影响——掩膜 IoU 或前景面积比例的分布，以及低质量掩膜样本上的
-      分项结果。若未测量掩膜质量，须明确说明这是本研究的局限】
+【待补: 掩膜质量对 Δ_SAM 的影响——前景面积占比分布、被 min_area_frac 拒绝的图像比例，
+      以及低质量掩膜样本上的分项结果。可从掩膜缓存直接统计。】
 
 We note a design decision with a consequence for interpretation. The two arms share the identity
 split, so an animal that is mis-detected in one arm is mis-detected in both, and the paired
@@ -608,48 +746,55 @@ require a third factor.
 
 ### 4.3 Computational cost
 
-Table 4 gives the measured cost of each backbone at the common input resolution. These figures are
-properties of the committed architecture definitions and were reproduced by instantiating each
-model from the reference implementation and calling its own counting routines, so they do not
-depend on any training run.
+Table 4 gives the cost of each backbone at the common input resolution. These figures are
+properties of the committed architecture definitions, obtained by instantiating each model from
+the reference implementation and calling its own counting routines, so they do not depend on any
+training run.
 
-| Backbone | Parameters | Multiply–accumulates @ 224² | Relative MACs |
-| --- | ---: | ---: | ---: |
-| Convolutional trunk | 1,832,224 | 242,311,168 | 1.00× |
-| Vision Transformer (ViT-Tiny/16) | 5,623,232 | 1,074,757,632 | 4.44× |
-| ResNet-50 | 24,557,120 | 4,088,184,832 | 16.87× |
+| Backbone | Compression | Parameters | MACs @ 224² | Relative MACs |
+| --- | --- | ---: | ---: | ---: |
+| Convolutional trunk | none | 1,832,224 | 242,311,168 | 1.00× |
+| Vision Transformer, unpruned | none | 5,623,232 | 1,074,757,632 | 4.44× |
+| Vision Transformer, pruned (ρ = 0.25) | structured, physical removal | 4,144,064 | 784,269,312 | 3.24× |
+| ResNet-50 | none | 24,557,120 | 4,088,184,832 | 16.87× |
 
 *Table 4. Cost of the inference embedding network at 224 × 224, embedding dimension 512,
 classification head excluded. Parameters and MACs measured by `count_parameters` and
 `estimate_flops` in `src/models.py` with `configs/experiment.yaml`; the relative column is the
-ratio to the convolutional trunk. These are MACs, not FLOPs.*
+ratio to the convolutional trunk. These are MACs, not FLOPs. The pruned row is the ViT at
+ρ = 0.25 with units physically removed, which is the configuration every `pruned_vit_arcface` run
+now uses; the unpruned row is retained because it is the like-for-like baseline for the pruning
+comparison.*
 
-<!-- Traceability for Table 4 — all three rows reproduced during the audit:
-       yolo_arcface   params 1,832,224   MACs 242,311,168
-       pruned_vit_arcface params 5,623,232 MACs 1,074,757,632
-       wang_metric (resnet50) params 24,557,120 MACs 4,088,184,832
-     Command: build_model(name, load_yaml("configs/experiment.yaml")) then
-     count_parameters(model) and estimate_flops(model, 224, cpu).
-     Relative ratios computed from these MACs: 1074757632/242311168 = 4.44,
-     4088184832/242311168 = 16.87. See paper/evidence-audit.md §7. -->
+<!-- Traceability for Table 4 — all four rows reproduced independently by instantiating each
+     model and calling the repository's count_parameters / estimate_flops at 224x224:
+       yolo_arcface            params 1,832,224   MACs 242,311,168
+       vit unpruned (ratio 0)  params 5,623,232   MACs 1,074,757,632
+       vit pruned   (ratio .25) params 4,144,064  MACs 784,269,312
+       wang_metric (resnet50)  params 24,557,120  MACs 4,088,184,832
+     Relative MAC ratios: 1074757632/242311168 = 4.44, 784269312/242311168 = 3.24,
+     4088184832/242311168 = 16.87.
+     Pruning deltas: params -1,479,168 (-26.3%), MACs -290,488,320 (-27.0%).
+     Pruning acts on 12 of 36 attention heads and 2,304 of 9,216 MLP channels
+     (1 of 3 heads and 192 of 768 channels per block, over 12 blocks).
+     See paper/evidence-audit.md section 4. -->
 
-The spread is the point. The three backbones differ by a factor of 13.4 in parameters and a factor
-of 16.9 in multiply–accumulates, so an accuracy difference of a few points between them has to be
-read against a very large difference in the cost of running them on an aircraft. For a UAV
-payload with a power and mass budget, the convolutional trunk at 242 M MACs per frame is a
-qualitatively different proposition from ResNet-50 at 4088 M MACs per frame, and the identification
-accuracy that the larger model buys is the quantity that decides whether the trade is worth making.
+Two comparisons matter, and they are different. Against ResNet-50, the pruned transformer costs
+5.2× fewer MACs (784 M against 4088 M) — the ratio that decides whether the model fits an
+on-board power and mass budget. Against its own unpruned version, pruning removes 26.3 % of
+parameters and 27.0 % of multiply–accumulates, which is the quantity that decides whether the
+compression stage earns its place in the pipeline at all. The absolute spread across the four rows
+is a factor of 16.9 in MACs from the convolutional trunk to ResNet-50, so an accuracy difference
+of a few points between backbones has to be read against a very large difference in the cost of
+running them on an aircraft.
 
-<!-- The pruning stage described in the project's method draft (paper/method.tex:290-324) is NOT
-     reflected in Table 4. In the committed revision the pruning operator removes nothing at the
-     configured ratio: int(3 heads * 0.25) = 0 skips head pruning, and the MLP write uses
-     advanced indexing, which returns a copy, so `w[idx].zero_()` leaves the parameter unchanged
-     (0 of 192 intended rows zeroed; verified empirically). Pruned and unpruned parameter counts
-     are identical at 5,623,232. The ViT row is therefore reported as an unpruned ViT-Tiny/16.
-     See paper/evidence-audit.md §4. -->
+<!-- Criterion disclosure. The implemented pruning ranks units by weight magnitude; see Section
+     3.8 and paper/evidence-audit.md section 4. No recognition result is claimed for the pruned
+     model here, only its architecture cost. -->
 
-【待补: 若在修订版中真正实现了结构化剪枝，须补充剪枝率—参数量—MACs—Rank-1 的对应表，
-      并说明剪枝后是否重新微调及微调设置】
+【待补: 剪枝率—参数量—MACs—Rank-1 的对应表（嵌套剪枝率 ρ ∈ {0, 0.25, 0.5}），
+      以及剪枝后是否重新微调、微调轮次与设置。当前尚无实测 Rank-1，
+      表中只填架构开销。】
 
 ### 4.4 Training behaviour
 
@@ -704,22 +849,32 @@ because a large network may be able to learn to ignore the background that a sma
 
 ### 5.2 What the cost figures imply for deployment
 
-The three backbones in Table 4 span a factor of nearly seventeen in multiply–accumulates. On a
-UAV, that factor translates into flight endurance, into the thermal envelope of the payload
-enclosure, and into whether inference can be done on board at frame rate or must be deferred to a
-ground station after landing. A deferred pipeline is not necessarily worse — a paddock can be
-flown in the morning and processed at midday, and for growth monitoring the latency is
-irrelevant — but it changes the system architecture, because on-board inference permits
-adaptive flight (re-flying an animal whose image was rejected) whereas deferred processing
+The rows of Table 4 span a factor of nearly seventeen in multiply–accumulates, from the
+convolutional trunk to ResNet-50. On a UAV, that factor translates into flight endurance, into the
+thermal envelope of the payload enclosure, and into whether inference can be done on board at frame
+rate or must be deferred to a ground station after landing. A deferred pipeline is not necessarily
+worse — a paddock can be flown in the morning and processed at midday, and for growth monitoring
+the latency is irrelevant — but it changes the system architecture, because on-board inference
+permits adaptive flight (re-flying an animal whose image was rejected) whereas deferred processing
 does not.
+
+Pruning changes where the transformer sits in that landscape, and the size of the change is worth
+stating plainly. Removing a quarter of its parameters moves the transformer from 4.44× the
+convolutional trunk's cost to 3.24×, and from 3.8× cheaper than ResNet-50 to 5.2× cheaper. That is
+a meaningful shift for a payload budget, but it does not make the transformer cheap: at 784 M MACs
+it still costs more than three times the convolutional trunk. Pruning therefore buys headroom
+within the transformer family rather than changing which family is affordable on a constrained
+aircraft. Whether the retained accuracy at the pruned operating point justifies even that reduced
+cost is an empirical question this draft does not answer, and we do not treat the compression as
+free: a pruned model that loses accuracy has not saved anything an operator cares about.
 
 The practical reading of Table 4 is therefore conditional on the intended workflow. For a
 post-flight batch pipeline, the ResNet-50 row is affordable and the question is purely whether
 its accuracy justifies its cost. For on-board inference at a few frames per second on an embedded
-accelerator, the convolutional trunk is the only one of the three that fits comfortably, and the
-relevant question becomes how much accuracy is lost by choosing it. This is why the protocol
-reports accuracy and cost together rather than accuracy alone: the comparison that matters
-operationally is between two cells, not between two numbers.
+accelerator, the convolutional trunk is the row that fits comfortably, followed by the pruned
+transformer, and the relevant question becomes how much accuracy is lost by moving down that
+column. This is why the protocol reports accuracy and cost together rather than accuracy alone:
+the comparison that matters operationally is between two cells, not between two numbers.
 
 ### 5.3 Identification as part of a monitoring record
 
@@ -775,8 +930,21 @@ and the between-backbone comparison is correspondingly weakened. Reporting the t
 
 *Segmentation dependence.* The purified arm inherits the failure modes of the segmenter. A mask
 that clips the shoulder, or that leaks into an adjacent animal, changes what the recogniser sees in
-a way that is correlated with pose and crowding. The protocol does not currently measure mask
-quality, and doing so is the most obvious single improvement to it.
+a way that is correlated with pose and crowding. The implementation mitigates the grosser cases —
+masks are clipped to the detector box, reduced to their largest connected component, hole-filled,
+and rejected below a minimum area — but these are guards against degenerate masks, not a guarantee
+of correct ones. The pipeline does not currently report mask quality, so a reader cannot tell from
+the results how often the purified crop was faithful to the dorsal coat. Measuring the foreground
+area distribution and the rejection rate is straightforward from the mask cache and is the most
+obvious single improvement to the protocol.
+
+*Pruning criterion.* The compression reported in Table 4 uses weight magnitude, which is a proxy
+for importance rather than a measure of it. A unit can carry little weight and still be the one
+that separates two similarly patterned animals, and magnitude ranking has no way to notice. The
+embedding-geometry criterion sketched in Section 3.8 would address that directly, but it requires a
+calibration pass and one forward pass per candidate unit, and it is not implemented here. The cost
+figures in Table 4 should therefore be read as an upper bound on what careful selection could
+achieve at the same removal rate, not as evidence that magnitude selection is near-optimal.
 
 *No open-set evaluation.* All probes are enrolled animals. A system deployed on a farm will
 encounter animals that are not in its gallery — newly purchased, visiting, or a neighbouring herd
@@ -819,8 +987,9 @@ pixels and nothing else; three architecturally distinct backbones are trained un
 angular margin objective with shared scale, margin, embedding dimension, optimiser and epoch
 budget; and one frozen identity-disjoint split serves every cell. Cost is reported on the
 inference network alone, excluding the training classifier, in multiply–accumulates rather than
-FLOPs. Under that accounting the three backbones cost 1.83 M, 5.62 M and 24.56 M parameters at
-242 M, 1075 M and 4088 M MACs per 224 × 224 frame.
+FLOPs. Under that accounting the backbones cost 1.83 M, 5.62 M and 24.56 M parameters at 242 M,
+1075 M and 4088 M MACs per 224 × 224 frame, and structured pruning at a removal rate of 0.25
+reduces the transformer to 4.14 M parameters and 784 M MACs.
 
 The contribution is a measurement instrument rather than a winning number. Applied to aerial
 cattle imagery it yields a per-backbone estimate of whether mask-based purification of the dorsal
@@ -834,10 +1003,12 @@ Three things would make a follow-on study substantially stronger: replication ac
 breeds, so that transfer rather than within-site accuracy becomes the reported quantity;
 open-set evaluation with an explicit rejection threshold, so that unknown animals are handled
 rather than assumed away; and a measurement of segmentation quality, so that the purified arm's
-dependence on its mask is characterised rather than ignored. None of these requires a new
-architecture. All three would make the resulting numbers usable as evidence in a livestock
-management decision, which is the standard that an applied agricultural journal should hold them
-to.
+dependence on its mask is characterised rather than ignored. A fourth change would strengthen the
+compression result specifically: replacing magnitude ranking with the embedding-geometry criterion
+of Section 3.8, and reporting accuracy at a matched parameter budget rather than at a matched
+removal rate. None of these requires a new architecture. Any of them would make the resulting
+numbers usable as evidence in a livestock management decision, which is the standard that an
+applied agricultural journal should hold them to.
 
 ## CRediT authorship contribution statement
 
