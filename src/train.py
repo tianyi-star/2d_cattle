@@ -1,4 +1,4 @@
-# Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
+# Copyright 2026 Bo, Zhengzhou University / Mutong
 # SPDX-License-Identifier: Apache-2.0
 """Train one cell of the 2 by 3 ablation with the shared ArcFace loss.
 

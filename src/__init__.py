@@ -1,6 +1,6 @@
-# Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
+# Copyright 2026 Bo, Zhengzhou University / Mutong
 # SPDX-License-Identifier: Apache-2.0
-"""Mutong (牧瞳): three backbones crossed with a SAM crop and a YOLO-box crop.
+"""Mutong: three backbones crossed with a SAM crop and a YOLO-box crop.
 
 Names are imported on first access so ``python -m src.<module>`` does not
 execute a module twice. Importing this package does not load a checkpoint.

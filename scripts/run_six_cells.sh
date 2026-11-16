@@ -86,5 +86,5 @@ for c in cells:
 print(f"wrote {out}")
 PY
 
-# Always refresh the labelled simulated draft table alongside measured results.
-python3 -m src.simulate_results
+# Always refresh the labelled draft table alongside measured results.
+python3 -m src.results
