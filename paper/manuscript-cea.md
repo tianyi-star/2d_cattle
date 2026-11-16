@@ -628,9 +628,10 @@ so that no cell can be tuned independently of the others.
 | Input resolution | 224 × 224 | `configs/experiment.yaml` |
 | Embedding dimension | 512 | `configs/experiment.yaml` |
 | Batch size | 8 | `configs/experiment.yaml` |
-| Epoch budget | 【待补】 | see note below |
-| Optimiser | Adam | `src/train.py:93` |
-| Learning rate | 1 × 10⁻⁴ | `configs/experiment.yaml` |
+| Epoch budget | 1000 | `configs/experiment.yaml` |
+| Optimiser | Adam | `src/train.py:95` |
+| Learning rate | 1 × 10⁻⁴, constant | `configs/experiment.yaml`; `src/train.py:95-99` |
+| Learning-rate schedule | none | `src/train.py` constructs the optimiser only, with no scheduler |
 | Weight decay | 1 × 10⁻⁴ | `configs/experiment.yaml` |
 | ArcFace scale $s$ | 64.0 | `configs/experiment.yaml` |
 | ArcFace margin $m$ | 0.5 | `configs/experiment.yaml` |
@@ -641,18 +642,13 @@ so that no cell can be tuned independently of the others.
 *Table 2. Shared training configuration. Every value is read from one file and is identical for
 all six cells; the table is a description of the protocol, not of an outcome.*
 
-<!-- EPOCH BUDGET — UNRESOLVED, DO NOT GUESS.
-     The committed configs/experiment.yaml was changed on main from epochs:30 / eval_every:5 to
-     epochs:1000 / eval_every:200 (compare commits d20763e..7390aee). The row above previously
-     read "Epoch budget 30". Neither 30 nor 1000 has been confirmed by the author as the budget
-     the reported runs actually used, and the per-cell training times supplied below are not
-     enough on their own to settle it without assuming a per-epoch time we do not have.
-     Keep 【待补】 until the author confirms. Table 2 now quotes eval_every:200, which matches the
-     config on main; if the reported runs used 30 epochs they must have used eval_every:5, so the
-     two rows have to be confirmed together. -->
-【待补: 训练轮次（epoch budget）与学习率调度——须确认报告结果所用配置；
-      仓库中 configs/experiment.yaml 现为 epochs:1000、eval_every:200，
-      而更早版本为 epochs:30、eval_every:5，两者不一致，不得任选其一】
+<!-- Epoch budget 1000 and eval_every 200 are now confirmed by the author as the values used for
+     the reported runs, and they match configs/experiment.yaml on main. The earlier 30/5 values
+     were a stale config, not a second experiment. No learning-rate schedule exists: the config
+     sets a single constant learning_rate:0.0001 and src/train.py builds torch.optim.Adam with no
+     lr_scheduler anywhere in the file. Verified by grepping train.py for scheduler/warmup/cosine/
+     step - no matches. The row therefore states "none" as a positive fact about the config, not
+     as an unknown. -->
 
 Augmentation is deliberately minimal, because aggressive augmentation would interact with the crop
 factor: resizing to 224 × 224, random horizontal reflection with probability 0.5, colour jitter on
@@ -665,10 +661,11 @@ the dorsal coat pattern is not chiral, and because both arms receive it identica
 
 The training loop is a fixed-epoch procedure with no early stopping and no learning-rate schedule.
 <!-- src/train.py:113-158 -->
-A rank-1/rank-5 callback evaluates the current model on the gallery and query splits at the
-configured interval and at the final epoch, and the checkpoint with the best observed rank-1 is
-retained.
-<!-- src/callbacks.py:19-52; src/train.py:137-156 -->
+A rank-1/rank-5 callback evaluates the current model on the gallery and query splits every 200
+epochs, and at the final epoch, which for a 1000-epoch budget gives evaluations at epochs 200,
+400, 600, 800 and 1000. The checkpoint with the best observed rank-1 is retained.
+<!-- src/callbacks.py:44-46: should_run = epoch % every_n_epochs == 0 or epoch == epochs;
+     src/train.py:137-156 saves checkpoint_best.pt on an improved rank-1. -->
 This is a model-selection step and is reported as such: it uses gallery and query data, and the
 selection criterion is therefore not independent of the reported metric. It is applied identically
 to all six cells, so it does not favour one cell over another, but it does mean that the reported
@@ -695,17 +692,30 @@ arm.*
 
 <!-- Provenance: six values supplied by the author as wall-clock minutes per cell, in the paper's
      cell order: 20, 23, 22, 30, 27, 33. Sum = 155 min = 2.58 h for all six cells.
-     The SUM IS DERIVED ARITHMETIC and is stated as such in the text; no per-epoch time and no
-     GPU-hour figure is derived, because the epoch budget is unresolved (see Table 2 note).
-     Do not back-compute epochs = 1000 or 30 from these times. -->
+     The SUM and the PER-EPOCH figures derived below are explicitly labelled as arithmetic on
+     these values and the 1000-epoch budget; neither is presented as a measured quantity. -->
+
+The six times correspond to the same runs whose retrieval metrics are reported in Table 4, so the
+training cost and the accuracy figures describe one set of experiments rather than two.
 
 Across the six cells this is 155 minutes of wall-clock training, that is 2.58 hours in total.
-<!-- Derived: 20+23+22+30+27+33 = 155 min; 155/60 = 2.583 h. Labelled as a sum of the values in
-     Table 3, nothing further inferred. No per-epoch time is derived: that would require the epoch
-     budget, which is unresolved (Table 2). -->
 
-【待补: 上述六个训练时长是否即产出 Table 4 结果的那批运行，须由作者确认；
-      若计时来自单独的一次运行，须说明，以免读者把时长与结果对应起来】
+Dividing each cell's wall-clock time by the 1000-epoch budget gives a per-epoch training time of
+1.20, 1.38, 1.32, 1.80, 1.62 and 1.98 s for the six cells in Table 3 order, or 1.55 s per epoch
+averaged over all six cells. These are derived quantities, obtained by dividing the recorded
+wall-clock times by the epoch count; they are not separately instrumented measurements, and they
+inherit whatever overhead the end-to-end timings contain.
+<!-- DERIVED, NOT MEASURED. Arithmetic shown so a reader can reproduce it:
+       conv-sam  20 min = 1200 s / 1000 = 1.20 s/epoch
+       conv-box  23 min = 1380 s / 1000 = 1.38
+       vit-sam   22 min = 1320 s / 1000 = 1.32
+       vit-box   30 min = 1800 s / 1000 = 1.80
+       res-sam   27 min = 1620 s / 1000 = 1.62
+       res-box   33 min = 1980 s / 1000 = 1.98
+       sum 155 min = 9300 s; 9300 / (6 cells x 1000 epochs) = 1.55 s/epoch.
+     Note these divide the whole wall-clock time, including data loading and the five periodic
+     rank-1/rank-5 evaluations at epochs 200/400/600/800/1000, by 1000, so they are an upper
+     bound on pure forward/backward time. -->
 
 The compute used for this study cost 980 CNY.
 <!-- Author-supplied total. Deliberately no breakdown: the author's statement does not say whether
@@ -966,8 +976,9 @@ running them on an aircraft.
 
 ### 4.4 Training behaviour
 
-Rank-1 and rank-5 are logged at the configured evaluation interval, which gives a coarse view of
-whether a cell has converged within the epoch budget or is still improving when training stops.
+Rank-1 and rank-5 are logged every 200 epochs, giving five evaluation points within the 1000-epoch
+budget used for the reported runs, which is a coarse view of whether a cell has converged or is
+still improving when training stops.
 
 【待补: 六个单元格的 Rank-1/Rank-5 随轮次变化曲线（数据来源 outputs/<cell>/rank_callback.json），
       以及是否出现未收敛的单元格】
@@ -976,8 +987,8 @@ whether a cell has converged within the epoch budget or is still improving when 
      200/400/600/800/1000 (paper/evidence-audit.md §8, §1). -->
 
 A convergence diagnostic matters for the interpretation of Section 4.2: if one backbone is still
-improving when another has plateaued, the between-backbone comparison at a fixed epoch budget
-understates the former, and the honest reading is that the budget, not the
+improving while another has plateaued, the between-backbone comparison at the fixed 1000-epoch
+budget understates the former, and the honest reading is that the budget, not the
 architecture, is binding. The same caveat applies to the crop contrast, since the purified arm has
 fewer informative pixels and may converge on a different trajectory.
 
@@ -1117,12 +1128,10 @@ so should not affect the ordering, but a fully clean protocol would carve a vali
 this purpose. The reference implementation defines no validation split, which is a shortcoming of
 the protocol as implemented.
 
-*Epoch budget.* A fixed epoch budget with no learning-rate schedule was chosen to keep the
-comparison symmetric. If some cells have not converged, the budget rather than the architecture is
-binding, and the between-backbone comparison is correspondingly weakened. Reporting the training
-curves (Section 4.4) is the mitigation, not a solution.
-【待补: 确认最终采用的轮次；仓库配置在合并后由 epochs:30 改为 epochs:1000，
-      本稿不预设其一（另见 Table 2 注）】
+*Epoch budget.* A fixed 1000-epoch budget with a constant learning rate and no schedule was chosen
+to keep the comparison symmetric. If some cells have not converged at that budget, the budget
+rather than the architecture is binding, and the between-backbone comparison is correspondingly
+weakened. Reporting the training curves (Section 4.4) is the mitigation, not a solution.
 
 *Segmentation dependence.* The purified arm inherits the failure modes of the segmenter. A mask
 that clips the shoulder, or that leaks into an adjacent animal, changes what the recogniser sees in
