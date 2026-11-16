@@ -1,104 +1,75 @@
-% Method and experimental protocol note.
+% CEA manuscript note: method, experimental setup, and pending results.
 %
-% STATUS: this file describes the method AS IMPLEMENTED in this repository.
-% It was previously drafted for a different venue and described several stages
-% (F-ODS support selection, quality-weighted loss, dynamic self-training) that
-% the implementation does not contain. Those stages are now marked explicitly as
-% not implemented; they are retained only as design notes.
-%
-% This file intentionally contains no measured Rank-1, Rank-5, parameter count,
-% MAC count, or latency. The measured cost figures live in
-% paper/manuscript-cea.md (Table 4) and paper/evidence-audit.md.
-%
-% The manuscript of record is paper/manuscript-cea.md. Where the two disagree,
-% the manuscript is correct.
+% STATUS: experimental protocol for the CEA draft on branch paper/jcea-draft.
+% All recognition inputs are SAM patches cropped before this pipeline. Numeric result cells are
+% pending the identity-disjoint rerun on the RTX 4090 (48 GB). No cell below is
+% a measurement, and none may be filled from an image-level or within-identity
+% split, including any preliminary run already voided for that reason.
 %
 % Requires amsmath, amssymb, and booktabs.
+
+\newcommand{\pending}{\textnormal{pending}}
+
+\section{Scope}
+\label{sec:scope}
+
+This note specifies the experiment that the CEA manuscript reports. Two constraints fix what may appear in it.
+
+First, every input image has already been cropped with a Segment Anything Model (SAM) mask of the dorsal coat. The pipeline begins at those patches. It does not detect cattle, it does not prompt a segmenter, and it does not build a rectangular crop of the original frame. There is therefore no paired box arm and no contrast defined against one.
+
+Second, the labeled animals are partitioned by identity. Each of the 96 identities is assigned to exactly one of the training, validation, and test sets, and every patch of that animal inherits the assignment. An image-level or within-identity random split is not a result of this protocol. Figures from any such split, including the voided preliminary run, are not transcribed here.
+
+All accuracy, recall, rank, mean-average-precision, timing, and cost cells are left as \pending{} until the identity-disjoint rerun on the stated server has finished. Empty cells are not filled from Wang \emph{et al.} or from any other external cattle-identification paper.
 
 \section{Contributions}
 \label{sec:contributions}
 
-The contributions of this work, stated so that each maps to code in this repository, are as follows.
 \begin{enumerate}
-    \item We specify a paired-crop protocol in which the two experimental arms are derived from the same detections in the same source frames, so that they differ in retained pixels and not in the list of animals, the number of images, or the identity assignment. The purified arm is the mask region $I_{\mathrm{sam}}$ of \eqref{eq:sam-crop}; the control arm is the box crop $I_{\mathrm{box}}$ of \eqref{eq:box-crop}.
-    \item We place three architecturally distinct embedding networks under one additive angular margin objective with a single shared set of scale, margin, and embedding-dimension values, so that the loss cannot act as a hidden variable in the architecture comparison.
-    \item We implement structured pruning of the Vision Transformer that physically removes attention heads and feed-forward channels, so that both the parameter count and the multiply--accumulate count fall. The selection criterion is weight magnitude. We state plainly that a task-specific criterion based on embedding geometry was considered and is \emph{not} implemented here (Section~\ref{sec:pruning}).
-    \item We implement the segmentation front-end that makes the paired-crop protocol executable: a box-prompted mask generator with on-disk mask caching and a hard failure when weights are absent, so that a run cannot silently degrade into two identical arms.
-    \item We define an efficiency accounting that is meaningful for deployment on an aircraft or an edge device, counting parameters and multiply--accumulates on the inference embedding alone and excluding the training classifier, and we release a seeded six-cell runner whose aggregation step refuses to emit a placeholder.
+    \item We evaluate three recognition variants that consume the same pre-cropped SAM patches and the same additive angular margin objective, so that backbone capacity is the only factor that differs among them.
+    \item We add an experimental group for farm-aware optimal dataset selection (F-ODS) and for farm-knowledge-guided self-supervised dynamic learning, using the quality score, the selection objective, and the support-set definition of the farm-aware few-shot formulation. The query identities are not filtered by that selection.
+    \item We keep structured pruning of the Vision Transformer as a capacity factor inside one of the three variants, and we state which related stages are in the pending tables and which remain future work (Section~\ref{sec:not-implemented}).
 \end{enumerate}
 
 \section{Method}
 \label{sec:method}
 
-\subsection{Problem Setup and Notation}
+\subsection{Problem Setup}
 \label{sec:setup}
 
-Let $\mathcal{X}$ be the set of UAV frames and let $y(x)\in\{1,\ldots,N\}$ be the identity of the animal of interest when it is known. The practical pipeline never classifies a raw frame. It first localizes the animal and restricts the pixels to the back coat, which is the biometric used throughout this work. A recognition model is an embedding
+Let $x$ be a SAM-pre-cropped dorsal-coat patch and let $y(x)\in\{1,\ldots,N\}$ be the identity of the animal when it is known. A recognition model is an embedding
 \begin{equation}
     \phi_{\theta}:\mathbb{R}^{H\times W\times 3}\rightarrow\mathbb{R}^{d},
     \label{eq:embedding}
 \end{equation}
-trained so that the cosine of the angle between $\ell_2$-normalized embeddings is large for one identity and small for different identities. At test time the ArcFace class-weight matrix is discarded. Identity decisions use only these normalized embeddings.
+trained so that the cosine of the angle between $\ell_2$-normalized embeddings is large within an identity and small across identities. At test time the ArcFace class-weight matrix is discarded. Identity decisions use only the normalized embeddings.
 
-The data are partitioned into a training split, a gallery split, and a query split, per animal. The partition is written into the manifest and is frozen before any model is fitted. An identity that has no training image contributes nothing to training; an identity that has no query image contributes nothing to the reported rank statistics, and the number of such identities is a data-accounting quantity to be stated with the results rather than absorbed silently.
+The three variants, the F-ODS arm, and the dynamic-learning arm share one frozen identity-disjoint partition. Validation identities are the only identities on which a selection parameter or a checkpoint may be chosen. Test identities are read once, after those choices are frozen.
 
-Three embedding networks are compared. The first is a compact convolutional trunk. It is called YOLO-ReID in the code and in this note, but the name is historical: it is \emph{not} a YOLO detector and shares no weights with one. See Section~\ref{sec:branches}. The second is a Vision Transformer, evaluated in both unpruned and pruned form. The third is a ResNet trunk, which stands in for the coat-pattern metric-learning work of Wang \emph{et al.}~\cite{wang2025coatdml}; it is that architectural family retrained under our shared objective, not a reproduction of their model (Section~\ref{sec:branches}). All three consume the same crop, use the same embedding dimension $d$, and are trained with the same ArcFace loss. The detector used to find animals is a separate model. It is not the first trunk, and the two sets of weights are not tied.
+\subsection{Inputs}
+\label{sec:inputs}
 
-\subsection{End-to-End Pipeline}
-\label{sec:pipeline}
+The raw UAV frames were cropped in advance by a SAM mask of the back coat. What this study receives is the resulting patch, not the frame. Localization is not a stage of this pipeline. Grass, hard shadow, and limbs that the mask excluded are already absent from the patch. All three variants and both arms of the new experimental group are trained and evaluated on these patches alone.
 
-The experimental pipeline is the following sequence. No stage reads the query labels, and the query set is never a source of training images.
-
-\begin{enumerate}
-    \item \textbf{Detection.} A YOLO detector maps a UAV frame $I$ to cattle boxes. Each box $B$ is an axis-aligned proposal for one animal. Boxes are the only spatial prompt passed to the segmenter.
-    \item \textbf{Back-region masking.} In the purified arm, a segmentation model is prompted with $B$ and returns a binary mask $M$ of the coat inside that box. The mask is not replaced by a rectangle, and a missing or unusable mask raises rather than falling back to the box crop (Section~\ref{sec:segmentation-impl}).
-    \item \textbf{Purified crop.} The pixels retained for recognition are
-    \begin{equation}
-        I_{\mathrm{sam}} = \operatorname{Crop}\!\left(I \odot M,\; B_{M}\right),
-        \label{eq:sam-crop}
-    \end{equation}
-    where $\odot$ is the element-wise product with $M$ broadcast over color, and $B_{M}$ is the tight axis-aligned box of the foreground pixels in $M$. Grass, hard shadow outside the coat, and limbs that fall outside $M$ are therefore absent from $I_{\mathrm{sam}}$.
-    \item \textbf{Paired control crop.} For the mask ablation only, the same detection produces
-    \begin{equation}
-        I_{\mathrm{box}} = \operatorname{Crop}(I, B)
-        \label{eq:box-crop}
-    \end{equation}
-    without calling the segmenter. $I_{\mathrm{box}}$ may still contain ground, shadow, and legs. A paired comparison uses the same source frame and the same box for \eqref{eq:sam-crop} and \eqref{eq:box-crop}.
-    \item \textbf{Parallel recognition.} The three backbones are trained on the same crop type and, within an arm, on the same manifest. The main comparison uses $I_{\mathrm{sam}}$. The mask ablation repeats the three trainings on the paired $I_{\mathrm{box}}$ images.
-    \item \textbf{Identification.} Each query crop is embedded and ranked against the gallery embeddings by cosine similarity. Rank-1 and Rank-5 follow from that ordering.
-    \item \textbf{Efficiency.} Parameter count, multiply--accumulates, and single-image latency are measured on the inference embedding, excluding the ArcFace matrix, at the common input resolution.
-\end{enumerate}
-
-The fork after detection is the core of the design: one path applies the mask and the other keeps the detector rectangle, after which the three embeddings and cosine ranking follow. Everything downstream of Step~5 is identical between the arms, which is what allows the difference in rank-1 to be attributed to the crop.
-
-\subsection{Crop Construction and Segmentation Implementation}
-\label{sec:segmentation-impl}
-
-The detector and the segmenter are shared preprocessing. They are identical for all six cells and both arms, neither is trained as part of this study, and their cost is reported separately from the recognition cost so that it cannot be attributed to one backbone.
-
-The segmenter is loaded lazily, on the first masking call, so a run restricted to the control arm never imports or allocates a segmentation model. Three backends are supported: the reference Segment Anything implementation \cite{kirillov2023sam} with \texttt{vit\_h}, \texttt{vit\_l}, or \texttt{vit\_b} weights; the MobileSAM package with \texttt{vit\_t}; and the \texttt{ultralytics} implementation already required by the detector path. The default model type is \texttt{vit\_b}.
-
-Each mask is refined before use. It is clipped to the detector box, reduced to its largest connected component so that a second animal cannot contribute an island of foreground, hole-filled, and rejected if its area falls below a configurable fraction of the box area ($0.5\%$ by default). A rejected mask raises. There is deliberately no fallback to the rectangle: a fallback would make the two arms byte-identical and destroy the contrast the protocol exists to measure.
-
-Masks are cached on disk, keyed jointly by the image identity, the detection box, and a fingerprint of the segmenter configuration, with the cache schema versioned so that a stale entry cannot be read as a current mask. Repeated epochs over one manifest therefore segment each image once and thereafter read a small packed array instead of re-running the segmenter. If the requested segmenter weights are absent, preprocessing aborts before writing any crop or manifest, so a partially built or structurally vacuous arm cannot be produced by accident.
-
-\subsection{Recognition Branches}
+\subsection{Three SAM-Fed Recognition Variants}
 \label{sec:branches}
 
-All three backbones are defined in \texttt{src/models.py}. Each maps a $224\times224\times3$ crop to a $d$-dimensional embedding, which is then $\ell_2$-normalized, so that the inner product of two embeddings is the cosine of the angle between them. No backbone is initialized from pretrained weights; all are trained from random initialization under the shared objective.
+The three SAM-related variants are three embedding networks. They see the same patches, the same identity split, the same input resolution, and the same loss. They differ in the trunk.
 
-\textbf{Convolutional trunk (``YOLO-ReID'').} The first branch is a five-stage convolutional stack of convolution--batch-normalization--SiLU blocks with stride-2 downsampling, global average pooling, and a linear projection to the embedding dimension. \emph{Naming caveat:} despite the identifier \texttt{yolo\_arcface} and the display name used in the logs, this is not a YOLO network. It has no CSP or C2f module, no feature-pyramid neck, no detection head, and it shares no weights with the detector used for preprocessing. The name is retained because it is the identifier under which the branch appears in the configuration files, checkpoints, and result directories; it should be read as a label, not as a claim about architecture. The branch serves as the low-capacity reference point.
+\textbf{Convolutional variant (YOLO-ReID).}
+A five-stage stack of convolution--batch-normalization--SiLU blocks with stride-2 downsampling, global average pooling, and a linear projection to the embedding dimension. The name is historical and does not mean that the trunk localizes animals. It is the low-capacity reference among the three variants.
 
-\textbf{Vision Transformer (unpruned and pruned).} The second branch is a patch-16 Vision Transformer with 12 blocks, 3 attention heads per block, and a 192-dimensional token width, taking the class token as the pooled representation and projecting it linearly to the embedding dimension. It is evaluated at two operating points: unpruned, and after structured pruning at a removal rate $\rho$ (Section~\ref{sec:pruning}). The pruned and unpruned variants are distinct rows of the cost comparison and are never conflated.
+\textbf{Pruned Vision Transformer.}
+A patch-16 Vision Transformer with 12 blocks, 3 attention heads per block, and a 192-dimensional token width. The class token is projected linearly to the embedding dimension. Structured pruning removes whole attention heads and whole feed-forward channels before training; the pruned network is then trained from random initialization. The removal rate and the selection criterion are those of Section~\ref{sec:pruning}. The unpruned transformer is not a fourth reported variant.
 
-\textbf{Residual network (``Wang \emph{et al.}'' branch).} The third branch is a ResNet-50 trunk with the classification layer removed and a linear projection to the embedding dimension. \emph{Scope caveat:} this is not a reproduction of the coat-pattern metric-learning model of Wang \emph{et al.}~\cite{wang2025coatdml}. Their code is not vendored in this repository, and this branch uses a standard torchvision residual trunk with randomly initialized weights, trained under the same ArcFace objective as the other two so that the loss is not a confounding factor. It should be read as a residual-network representative of the capacity extreme, standing in for that line of work rather than instantiating it. Published figures from Wang \emph{et al.} arise under a different training objective and are not numbers of this protocol.
+\textbf{Residual variant (Wang \emph{et al.}).}
+A ResNet-50 trunk with the classification layer removed and a linear projection to the embedding dimension. This is the architectural family of the coat-pattern metric-learning model of Wang \emph{et al.}~\cite{wang2025coatdml}, retrained under the shared ArcFace objective. It is not a copy of their released weights, and their published figures are not results of this protocol.
 
-Since the three backbones differ in capacity by more than an order of magnitude, comparing accuracy alone would be uninformative. Every cell is reported with its parameter count and its multiply--accumulate count, and the reported discussion reads accuracy against cost rather than accuracy alone.
+No variant is initialized from pretrained weights. Because the three trunks differ in capacity, every row is reported with its parameter count and its multiply--accumulate count as well as with its recognition metrics. Those cost cells are \pending{} with the recognition cells; they are read from the same rerun.
 
 \subsection{Shared Angular Margin Objective}
 \label{sec:arcface}
 
-All six cells are trained with the additive angular margin loss of Deng \emph{et al.}~\cite{deng2019arcface}. For an $\ell_2$-normalized embedding $z_{i}=\phi_{\theta}(x_{i})/\lVert\phi_{\theta}(x_{i})\rVert_{2}$ and $\ell_2$-normalized class weights, let $\theta_{y_{i}}$ be the angle between $z_{i}$ and the weight of the true class. With scale $s>0$ and margin $m_{\angle}>0$,
+Each variant is trained with the additive angular margin loss of Deng \emph{et al.}~\cite{deng2019arcface}. For an $\ell_2$-normalized embedding $z_{i}=\phi_{\theta}(x_{i})/\lVert\phi_{\theta}(x_{i})\rVert_{2}$ and $\ell_2$-normalized class weights, let $\theta_{y_{i}}$ be the angle between $z_{i}$ and the weight of the true class. With scale $s>0$ and margin $m_{\angle}>0$,
 \begin{equation}
     \ell_{i}
     =
@@ -112,156 +83,358 @@ All six cells are trained with the additive angular margin loss of Deng \emph{et
     }.
     \label{eq:arcface}
 \end{equation}
-The scale and the margin are shared constants. They are not a measured result of this dataset, and they are not retuned per branch.
+The scale, the margin, and the embedding dimension are shared constants. They are not retuned per variant. On the three-variant comparison the loss is unweighted: every training patch contributes $\ell_{i}$ with weight one. The F-ODS arm replaces that uniform weight by the quality weight of Section~\ref{sec:fods}; it does not change \eqref{eq:arcface} itself.
 
-The objective is applied uniformly and unweighted. Each sample in a batch contributes $\ell_{i}$ with weight one. \emph{No quality weighting is applied.} An earlier version of this draft described a quality-weighted variant $\mathcal{L}_{\mathrm{total}}$ in which each sample carried a farm-aware weight $w_{i}=Q(x_{i})$; that variant is \textbf{not implemented} and produced no result here. See Section~\ref{sec:not-implemented}.
-
-At inference the class-weight matrix is discarded. Each network returns an $\ell_2$-normalized embedding, and identities are ranked by cosine similarity. This is why parameter and multiply--accumulate counts exclude the classifier: its width is the number of enrolled identities, a property of the deployment rather than of the network.
-
-\subsection{Training Procedure}
+\subsection{Training Schedule and Server}
 \label{sec:training}
 
-Training settings are shared across all six cells and are recorded in a single configuration file, so that no cell can be tuned independently of the others. Each cell is trained from random initialization for a fixed epoch budget with Adam, a constant learning rate, and no early stopping and no learning-rate schedule. Augmentation is deliberately minimal, because aggressive augmentation would interact with the crop factor: resizing to the common input resolution, random horizontal reflection, colour jitter on brightness, contrast, and saturation, conversion to a tensor, and normalisation with ImageNet statistics. No random cropping, rotation, or erasing is applied, since each would partially undo the crop policy that the experiment is designed to test.
+The schedule is shared. Each reported cell is trained from random initialization for 1000 epochs with Adam, learning rate $1\times 10^{-4}$, weight decay $1\times 10^{-4}$, batch size 8, and no learning-rate schedule and no early stopping. The input resolution is $224\times 224$ and the embedding dimension is $d=512$. The ArcFace scale is $s=64$ and the margin is $m_{\angle}=0.5$. Augmentation is resizing, random horizontal reflection, and mild colour jitter, then ImageNet normalisation. No random crop, rotation, or erasing is applied.
 
-A rank-1/rank-5 callback evaluates the current model on the gallery and query splits at a fixed epoch interval and at the final epoch. The checkpoint with the best observed rank-1 is retained and used for the reported evaluation. This is a model-selection step and is disclosed as such: it uses gallery and query data, so the selection criterion is not independent of the reported metric. It is applied identically to all six cells, so it does not favour one cell over another, but the reported figures are best-observed rather than single-final-epoch values. A fully clean protocol would carve out a validation split for this purpose.
+Recognition metrics are evaluated every 200 epochs, at epochs 200, 400, 600, 800, and 1000. The checkpoint with the best rank-1 on the validation identities is the one that is scored on the test identities. Test identities are not used to pick that checkpoint.
 
-The six cells are produced by a single orchestrating script rather than by hand. Runs are seeded, each seed produces its own manifest and run directory, the results directory is created exclusively under a UTC timestamp and never overwritten, the full configuration including the git commit is written before training begins, and the aggregation step reads only the \texttt{metrics.json} files written by that run and rejects anything stale, missing, non-finite, placeholder-tagged, or attributable to the wrong crop arm.
+All training and evaluation for the tables in Section~\ref{sec:protocol} run on one private Ubuntu server with one NVIDIA GeForce RTX 4090 (48\,GB). Wall-clock time and monetary cost are \pending{} and will be taken from that rerun. They are not copied from any earlier run.
 
-\subsection{Structured Pruning of the Vision Transformer}
+\subsection{Structured Pruning}
 \label{sec:pruning}
 
-The transformer branch is evaluated at a pruned operating point as well as an unpruned one. Two structural unit types are removed: whole attention heads, and whole channels of the feed-forward block.
+The transformer variant is pruned once, at construction, before training. Units are ranked by weight magnitude: the mean absolute weight of an attention head, taken over its query, key, and value rows, and of a feed-forward channel, taken over the corresponding row of the first feed-forward projection. The lowest-ranked units are removed at rate $\rho$ per block, with half-up rounding and a floor of one unit. Removal is physical: the tensors are rebuilt without the dropped rows and columns, so both the parameter count and the multiply--accumulate count fall. The realised pruning is written into the run metadata.
 
-\textbf{Selection criterion (as implemented).} Units are ranked by \emph{weight magnitude}: the mean absolute weight of a unit, taken over the query, key, and value rows for an attention head and over the corresponding row of the first feed-forward projection for a channel. The lowest-ranked units are removed. This criterion is deterministic, requires no calibration pass, and imposes no additional forward passes during selection.
+A different ranking, by the drop in an embedding discriminability ratio on a calibration split, was considered and is not part of any pending table. It is recorded under Section~\ref{sec:not-implemented}.
 
-\textbf{What was not used.} An alternative criterion ranks each unit by the change it induces in embedding geometry. On a calibration split disjoint from the query set, define the mean squared intra-identity and inter-identity distances
-\begin{align}
-    S_{\mathrm{intra}}(\phi)
-    &=
-    \frac{1}{|\mathcal{P}_{\mathrm{same}}|}
-    \sum_{(a,b)\in\mathcal{P}_{\mathrm{same}}}
-    \lVert z_{a}-z_{b}\rVert_{2}^{2},
-    \label{eq:intra}\\
-    S_{\mathrm{inter}}(\phi)
-    &=
-    \frac{1}{|\mathcal{P}_{\mathrm{diff}}|}
-    \sum_{(a,b)\in\mathcal{P}_{\mathrm{diff}}}
-    \lVert z_{a}-z_{b}\rVert_{2}^{2},
-    \label{eq:inter}
-\end{align}
-and a discriminability ratio
+\subsection{Farm-Aware Optimal Dataset Selection}
+\label{sec:fods}
+
+UAV collections are long-tailed. Animals that stay under the flight path contribute many patches; animals at the edge of the pasture, lying animals, and motion-blurred animals contribute few. A support set drawn at random therefore over-represents frequent identities and spends supervision on patches whose coat is not informative. F-ODS is a training-pool operation. It selects a smaller, higher-quality, more balanced support set. It does not define a cleaned test set, and it does not drop a test patch because its quality is low.
+
+\subsubsection{Quality factors}
+\label{sec:quality}
+
+For a training patch $x$, five scores in $[0,1]$ are computed from the patch itself. Normalizers that need a distribution (percentiles and a reference aspect ratio) are fit on training identities only and then frozen. They are not fit on validation or test identities.
+
+\textbf{Body visibility $V$.}
+Visibility measures how much of the animal remains inside the supplied patch and how little of the patch is padding, truncation at the border, or a second animal. Let $\Omega$ be the patch domain and let $F(x)\subseteq\Omega$ be the retained animal region. Let $\partial\Omega$ be the patch boundary and let $T(x)$ be the portion of $F(x)$ that touches $\partial\Omega$. Let $O(x)$ be the portion of the patch that belongs to an animal other than the labeled one, when such a region is present, and the empty set otherwise. Then
 \begin{equation}
-    \Delta(\phi)
+    V(x)
     =
-    \frac{S_{\mathrm{inter}}(\phi)}{S_{\mathrm{intra}}(\phi)+\varepsilon},
-    \label{eq:discriminability}
+    \frac{|F(x)|}{|\Omega|}
+    \left(1-\frac{|T(x)|}{|F(x)|}\right)
+    \left(1-\frac{|O(x)|}{|\Omega|}\right),
+    \label{eq:visibility}
 \end{equation}
-with $\varepsilon>0$ guarding an empty within-identity scatter. For a structural unit $u$, the importance of that unit would be the drop in discriminability,
+with the convention that the middle factor is $1$ when $F(x)$ is empty. A patch that is filled by one untruncated animal has $V(x)$ near $1$.
+
+\textbf{Coat cleanliness $C$.}
+Cleanliness measures whether coat texture, rather than mud or a saturated patch, dominates the animal region. Let $\kappa(x)$ be the mean absolute Laplacian response of the luminance inside $F(x)$, and let $\eta(x)$ be the fraction of those pixels whose luminance is below $0.05$ or above $0.95$. Using the 5th and 95th percentiles $\kappa_{5}$ and $\kappa_{95}$ of $\kappa$ on the training identities,
 \begin{equation}
-    I(u)=\Delta(\phi)-\Delta\!\left(\phi^{(-u)}\right),
-    \label{eq:importance}
+    C(x)
+    =
+    \operatorname{clip}_{[0,1]}
+    \!\left(
+        \frac{\kappa(x)-\kappa_{5}}{\kappa_{95}-\kappa_{5}}
+    \right)
+    \bigl(1-\eta(x)\bigr).
+    \label{eq:cleanliness}
 \end{equation}
-where $\phi^{(-u)}$ is the network with unit $u$ removed and no other weight changed.
 
-\emph{This criterion is a design direction and was not evaluated.} It is attractive because it asks directly whether a unit keeps images of one animal together and images of different animals apart, which is what coat-pattern re-identification needs, whereas weight magnitude is only a proxy. It was not implemented in this work, no result reported anywhere in this repository was produced with it, and no claim about its properties is made. Its cost is also materially higher: it requires a calibration split and one forward pass per candidate unit, so the selection stage scales with the number of units considered. We record it here so that a follow-on study can implement and compare it rather than rediscover it.
+\textbf{Viewing angle $A$.}
+The useful view is a near-nadir view of the back. Let $\rho(x)$ be the width-to-height ratio of $F(x)$, and let $\rho_{0}$ be the median of $\rho$ over training patches whose visibility is at least the training-pool median. Let $\sigma(x)=|F(x)|/|\operatorname{conv}(F(x))|$ be the solidity of that region. Then
+\begin{equation}
+    A(x)
+    =
+    \sigma(x)\,
+    \exp\!\left(
+        -\left|\log\frac{\rho(x)}{\rho_{0}}\right|
+    \right).
+    \label{eq:viewpoint}
+\end{equation}
+Extreme aspect ratios and fragmented regions, which accompany oblique and partial side views, reduce $A$.
 
-\textbf{Removal rate and physical removal.} The removal rate $\rho$ is applied per block with half-up rounding and a floor of one unit, so that a requested removal cannot silently round to nothing. On a 3-head block at $\rho=0.25$ this removes one head per block; on a 768-channel feed-forward block it removes 192 channels at the same rate. Units are physically removed rather than masked: the affected tensors are rebuilt without the dropped rows and columns, so the parameter count and the multiply--accumulate count both fall. A request for pruning that would remove nothing raises rather than training an unpruned network under a pruned name, and the realised pruning is recorded in the run metadata and the evaluation output so that a reported cell can be matched to the architecture that produced it. Pruning is applied once at construction, before training; the pruned network is then trained from random initialization under the shared objective like the other branches. There is no separate few-shot fine-tuning stage.
+\textbf{Illumination $L$.}
+Let $\mu(x)$ and $\varsigma(x)$ be the mean and standard deviation of the luminance inside $F(x)$. Let $\varsigma_{95}$ be the 95th percentile of $\varsigma$ on the training identities. Mid-gray, low-variance illumination is preferred:
+\begin{equation}
+    L(x)
+    =
+    \operatorname{clip}_{[0,1]}\!\bigl(1-2|\mu(x)-0.5|\bigr)
+    \cdot
+    \operatorname{clip}_{[0,1]}\!\left(1-\frac{\varsigma(x)}{\varsigma_{95}}\right).
+    \label{eq:illumination}
+\end{equation}
 
-The convolutional trunk and the residual branch are not pruned. Their capacity is whatever their unpruned architectures specify, which is why parameter count and multiply--accumulates are reported per branch rather than assumed equal.
+\textbf{Image sharpness $S$.}
+Let $v(x)$ be the variance of the Laplacian inside $F(x)$, and let $v_{5}$ and $v_{95}$ be its 5th and 95th training-pool percentiles.
+\begin{equation}
+    S(x)
+    =
+    \operatorname{clip}_{[0,1]}
+    \!\left(
+        \frac{v(x)-v_{5}}{v_{95}-v_{5}}
+    \right).
+    \label{eq:sharpness}
+\end{equation}
+Motion blur and defocus decrease $S$.
+
+\subsubsection{Quality score and selection objective}
+\label{sec:objective}
+
+The farm-aware quality of a training patch is
+\begin{equation}
+    Q
+    =
+    \alpha V+\beta C+\gamma A+\delta L+\epsilon S,
+    \label{eq:quality}
+\end{equation}
+with $\alpha,\beta,\gamma,\delta,\epsilon\ge 0$ and $\alpha+\beta+\gamma+\delta+\epsilon=1$, so that $Q\in[0,1]$. The five weights are not identity labels and are not estimated from the test identities. Their role is to prefer patches in which the coat is visible, clean, viewed from above, evenly lit, and sharp, and thereby to reduce the imbalance between identities that a raw UAV collection would otherwise pass to the loss.
+
+For $N$ identities and a per-identity count $m$, the selected support set keeps, for each identity, the $m$ highest-quality training patches of that identity:
+\begin{equation}
+    D(N,m)
+    =
+    \bigl\{
+        x_{ij}
+        \mid
+        i=1,\ldots,N,\;
+        j=1,\ldots,m
+    \bigr\},
+    \label{eq:support-set}
+\end{equation}
+where $x_{ij}$ is the training patch of identity $i$ with the $j$-th largest $Q$. An identity with fewer than $m$ training patches contributes only the patches it has; it is not duplicated to fill the slot, and an identity with no qualified training patch is not given a fabricated prototype. The number of such identities is reported with the table rather than absorbed into the accuracy.
+
+The objective that scores a candidate support set is
+\begin{equation}
+    \max \Bigl(
+        \operatorname{Acc}\!\bigl(D\bigr)
+        -\lambda \lvert D\rvert
+        +\mu \, Q(D)
+    \Bigr),
+    \label{eq:objective}
+\end{equation}
+where $\operatorname{Acc}(D)$ is rank-1 on the validation identities using prototypes built from $D$, $\lvert D\rvert$ is the number of selected patches, $Q(D)$ is the mean of $Q$ over $D$, and $\lambda>0$, $\mu>0$. Accuracy rewards a support set that identifies held-out validation animals; the size term penalises a larger set; the quality term rewards a cleaner one. $\operatorname{Acc}$ is not computed on the test identities.
+
+The operating point retained for the reported F-ODS arm is the identity count and the per-identity count that maximise validation accuracy of the selected set,
+\begin{equation}
+    (N^{\star},m^{\star})
+    =
+    \arg\max_{N,m}\;
+    \operatorname{Acc}\!\bigl(D(N,m)\bigr).
+    \label{eq:argmax}
+\end{equation}
+$N^{\star}$ is not a device for deleting difficult test identities. Every test identity stays in the evaluation. $N^{\star}$ counts training identities that still have at least one selected patch. The coefficients $(\alpha,\beta,\gamma,\delta,\epsilon)$, the thresholds, $\lambda$, and $\mu$ are frozen on the validation identities before \eqref{eq:argmax} is read out, and they are not refit on the test identities. The realised $(N^{\star},m^{\star})$ is \pending{}.
+
+Inside a training batch the F-ODS arm weights each selected patch by its own quality, $w_{i}=Q(x_{i})$, and minimises the weighted mean of \eqref{eq:arcface}. Identities are sampled uniformly, and a patch inside the chosen identity is sampled with probability proportional to $w_{i}$, so a head identity cannot fill a batch merely because the flight recorded it more often. The comparison arm without F-ODS uses every training patch of the same training identities with $w_{i}=1$. The test patches are identical in the two arms.
+
+\subsection{Farm-Knowledge-Guided Self-Supervised Dynamic Learning}
+\label{sec:dynamic}
+
+This stage uses additional SAM-pre-cropped patches that carry no label the loss is allowed to trust. ``Self-supervised'' is used in the self-training sense: the current model proposes an identity, and the farm-aware quality score decides whether that proposal may enter the training pool. The stage does not replace \eqref{eq:arcface} by a contrastive pretext loss.
+
+\begin{enumerate}
+    \item Build the unlabeled pool $\mathcal{U}$ only from SAM patches that cannot be linked to a validation or test identity. Patches of a test or validation animal, and patches from the same flight sequence as a test or validation image of that animal, are removed before any score is computed. If that exclusion leaves $\mathcal{U}$ empty, the dynamic-learning arm is reported as not run. It is not filled with held-out identities.
+    \item Compute $Q$ for every remaining patch with the normalizers and the coefficients already frozen in Section~\ref{sec:fods}. Do not refit them on $\mathcal{U}$.
+    \item Embed each patch with the current $\phi_{\theta}$ and compare it with the prototypes built from the labeled training support only. The confidence and the pseudo-label are
+    \begin{equation}
+        c(x)=\max_{y}\, s(x,y),
+        \qquad
+        \hat{y}(x)=\arg\max_{y}\, s(x,y),
+        \label{eq:confidence}
+    \end{equation}
+    where $s(x,y)$ is the cosine between the normalized embedding of $x$ and the normalized prototype of a training identity $y$.
+    \item Admit $x\in\mathcal{U}$ if and only if
+    \begin{equation}
+        c(x)\ge \tau_{c}
+        \quad\text{and}\quad
+        Q(x)\ge \tau_{q}.
+        \label{eq:admit}
+    \end{equation}
+    Both gates are chosen on the validation identities before the test identities are read. A patch that fails either gate is discarded. It is not given a soft label, and it is not moved into the test set.
+    \item Append each admitted pair $\bigl(x,\hat{y}(x)\bigr)$ to the training pool with weight $w=Q(x)$, and continue to minimise the weighted form of \eqref{eq:arcface}. The update touches only the variant under training.
+    \item Every $R$ update rounds, re-embed $\mathcal{U}$, recompute \eqref{eq:confidence}, and rebuild the admitted set from scratch by \eqref{eq:admit}. A patch that later falls below either gate leaves the pool. Prototypes used for the next admission test are recomputed from the labeled support only, so a wrong pseudo-label cannot move the prototype that judges the next round.
+    \item After the last round, evaluate the test identities once. No patch that entered through \eqref{eq:admit} is eligible to be a query, a gallery image, or a prototype component.
+\end{enumerate}
+
+The two gates do different work. Confidence rejects a patch that resembles no training identity or that resembles several at once. Quality rejects a patch that is poorly visible, dirty, oblique, badly lit, or blurred, even when the current model is confident. Neither gate is the method by itself. The number of admitted patches and the values of $\tau_{c}$, $\tau_{q}$, and $R$ are \pending{}.
 
 \subsection{Stages Not Implemented}
 \label{sec:not-implemented}
 
-For transparency, and because an earlier draft of this note described them as parts of the method, we record three stages that this repository does \emph{not} contain. None of them contributed to any number, table, or claim in this work. They are listed so that no reader infers them from the surrounding text.
+The pending tables and the two figures cover a stated set of components. Anything not in that set is not a result of this manuscript.
 
-\textbf{Farm-aware optimal dataset selection (F-ODS).} An earlier draft described scoring each training candidate by body visibility, coat-pattern cleanliness, aerial viewpoint, illumination, and sharpness; combining the scores into a scalar quality $Q$; using $Q$ to cap the long-tailed support set and to weight the loss; and selecting the operating point on a validation split. \textbf{None of this is implemented.} There is no quality scoring, no support-set cap, no selection objective, and no validation split in the code. Training uses every row whose manifest split is \texttt{train}, with uniform weight.
+\textbf{In the pending evaluation.}
+The three SAM-fed variants of Section~\ref{sec:branches}, trained with uniform weights on the full training identities.
+F-ODS, including the quality score \eqref{eq:quality}, the objective \eqref{eq:objective}, the operating point \eqref{eq:argmax}, and the quality weight $w_{i}=Q(x_{i})$ inside \eqref{eq:arcface}.
+Farm-knowledge-guided self-supervised dynamic learning, including the two gates of \eqref{eq:admit}.
+These three blocks are the experimental contents of Section~\ref{sec:protocol}. Their cells stay \pending{} until the RTX 4090 rerun finishes. Inclusion in the protocol is not a measured outcome.
 
-\textbf{Quality-weighted loss.} The weighted objective $\mathcal{L}_{\mathrm{total}}$ that would have carried $w_{i}=Q(x_{i})$ into the ArcFace loss is \textbf{not implemented}. The training loop applies \eqref{eq:arcface} unweighted to every sample.
-
-\textbf{Dynamic self-training.} An earlier draft described admitting unlabeled frames into the training pool when both a confidence gate and a quality gate passed, with periodic re-embedding and rebuild of the admitted set. \textbf{None of this is implemented.} There is no pseudo-labelling, no gate, no unlabeled pool, and no iterative update in the code.
-
-These three stages are, in our view, worth building: F-ODS addresses a real long-tail problem in UAV collections, and quality gating addresses the fact that many frames show an animal whose coat is not actually visible. They are recorded here as a research agenda, explicitly not as results.
-
-\subsection{Inference}
-\label{sec:inference}
-
-Given a new UAV frame, the detector proposes boxes, the segmenter produces $M$, and \eqref{eq:sam-crop} produces the crop. The crop is embedded by the selected branch. Cosine scores against the gallery give the identity ranking. If the control model is the one under test, \eqref{eq:box-crop} replaces \eqref{eq:sam-crop} and the segmenter is not called.
+\textbf{Not in this evaluation.}
+A second crop of the original frame. The inputs are already SAM patches, so no paired crop arm is trained and no difference against another crop is reported.
+Pruning by the embedding discriminability ratio. The transformer variant uses weight magnitude (Section~\ref{sec:pruning}); the geometry criterion remains future work and has no row in the tables.
+Any image-level or within-identity random split. That partition is not a future arm of this study. Its numbers are excluded, not deferred.
+Published identification figures from Wang \emph{et al.}~\cite{wang2025coatdml}. They were produced under a different objective and are not filled into Table~\ref{tab:three-sam} or Table~\ref{tab:fods}.
 
 \section{Experimental Protocol}
 \label{sec:protocol}
 
-This section specifies the measurements the protocol requires. It reports no Rank-1, Rank-5, parameter count, multiply--accumulate count, or latency. Empty cells in a results table are measurements still to be made. They must not be replaced by figures from Wang \emph{et al.} or by any other external cattle-identification paper.
-
-\subsection{Data, Split, and Fairness Constraints}
+\subsection{Data and the Identity-Disjoint Split}
 \label{sec:data-protocol}
 
-The image source is the Zenodo archive of Wang \emph{et al.}~\cite{wang2024uavlidar} (record 10.5281/zenodo.13364663, CC BY 4.0), which was downloaded and is stored locally on our GPU server at \texttt{/home/iadi/UAV-basedData/RGB-data/individaulsByIds}, organised as one directory per identity. The directory names are herd identifiers and are non-contiguous. The archive documents 96 semi-free-range beef cattle, recorded as 96 Simmental male beef cattle in the companion record (10.5281/zenodo.13361729). The imagery is publicly available; this study applies an identification protocol to it rather than collecting it. Published identification figures from Wang \emph{et al.}~\cite{wang2025coatdml} are not restated here or treated as results of the three-branch protocol. Capture parameters --- flight altitude, ground sampling distance, camera model and focal length, image resolution, campaign dates and site --- are documented in the accompanying data article \cite{wang2025datadescriptor} and are \textbf{[to be confirmed against that record and the flight logs]}.
+The imagery is the public UAV archive of Wang \emph{et al.}, Zenodo record 10.5281/zenodo.13364663 \cite{wang2024uavlidar}, CC BY 4.0. The archive is the source released with the data article of Wang, Kooistra, M\"ucher, and Wang \cite{wang2025datadescriptor} in \emph{Scientific Data}. The coat-pattern identification study on this population is Wang, M\"ucher, Wang, Wang, and Kooistra \cite{wang2025coatdml} in \emph{Computers and Electronics in Agriculture}. Those three publications, and the Zenodo DOI above, are the dataset metadata used here. The archive documents 96 semi-free-range beef cattle, recorded as 96 Simmental males in the companion record 10.5281/zenodo.13361729. This study does not restate their identification numbers as its own.
 
-The labeled frames are partitioned \emph{by animal}, not by image: each of the 96 identities is assigned to exactly one of a training, a validation and a test set, and every image of that animal inherits the assignment. This is required because consecutive UAV frames of one animal are near-duplicates; an image-level split would place near-identical frames on both sides of the train/test boundary and let a model retrieve a memorised frame rather than an animal, inflating rank-1. The identity lists are written into the manifest, the three sets are asserted to be disjoint, and the partition is frozen before any model is fitted and shared by every cell and every ablation arm. \textbf{[Identity split counts and the identity lists to be supplied from the manifest.]}
+The patches used for recognition are the SAM crops of that imagery, produced before this pipeline and stored one identity per directory. Acquisition parameters --- site, dates, aircraft, altitudes, and the LiDAR-plus-RGB sensor --- are those reported by Wang \emph{et al.}~\cite{wang2025datadescriptor}. They are properties of the archive, not outcomes of the rerun.
 
-For every backbone, the main comparison uses $I_{\mathrm{sam}}$, the unweighted objective \eqref{eq:arcface}, the common $(s,m_{\angle},d)$, and the same manifest. The optimizer family, the epoch budget, and the learning rate are also shared across the three branches. They are fixed before the query evaluation and are not reported as a tuned outcome.
+The split is by identity. The 96 identities are divided into training, validation, and test sets that share no animal. Every SAM patch of an animal follows that animal. The test set is the only set on which rank-1, rank-5, closed-set accuracy, and mean average precision are reported. Validation is used for the F-ODS coefficients, for $(N^{\star},m^{\star})$, for the two dynamic-learning gates, and for checkpoint selection. Training patches are the only labeled patches that enter the loss. Identity counts and patch counts in each set are \pending{}; they will be copied from the manifest of the rerun and checked against the 96 identities.
 
-\subsection{Metrics and Cost Accounting}
+\subsection{Metrics}
 \label{sec:metrics}
 
-Evaluation is closed-set retrieval. Each query image is embedded and ranked against the gallery embeddings by cosine similarity in descending order. Duplicate identities are suppressed during ranking, so that a query cannot be scored correct twice for the same animal when the gallery holds more than one image of an identity.
+Evaluation is closed-set. Each test patch is embedded and ranked against gallery embeddings of the test identities by cosine similarity. Duplicate identities are suppressed, so a query is not counted correct twice for one animal. Rank-$k$ is the fraction of test queries whose true identity is among the $k$ highest-ranked distinct gallery identities. Closed-set accuracy is the fraction of test queries whose nearest gallery identity is the true one, which coincides with rank-1 under this ranking. Mean average precision is the mean, over test queries, of the average precision of that ranking. Recall@$k$ is the same quantity as rank-$k$; both names are not given separate numbers.
 
-Rank-$k$ is the fraction of query images for which the true identity is among the $k$ highest-ranked distinct gallery identities. We report Rank-1 and Rank-5: Rank-1 is the quantity an automatic decision would act on, Rank-5 the quantity that determines the usefulness of a short human-verification list.
+Parameters and multiply--accumulates are counted on $\phi_{\theta}$ at $224\times 224$, after pruning where pruning applies, and exclude the ArcFace matrix. Latency, if reported, is the single-image forward time of $\phi_{\theta}$ at batch size 1 on the RTX 4090, after a fixed warmup, and excludes data loading. No millisecond value is stated in this note.
 
-Efficiency is measured on the inference function $\phi_{\theta}$, not on the ArcFace matrix and not on the detector. The detector and segmenter are shared preprocessing; their cost may be reported as a separate line, identical for every recognizer, but is not added unequally to one branch.
-\begin{itemize}
-    \item \textbf{Parameters.} The number of trainable parameters in $\phi_{\theta}$ after pruning, when pruning applies.
-    \item \textbf{Multiply--accumulates.} The MAC count of one forward pass of $\phi_{\theta}$ at the common input resolution. We report MACs rather than FLOPs; the two differ by a factor of two, and the distinction is stated wherever a figure is given.
-    \item \textbf{Latency.} The single-image wall-clock time of one forward pass of $\phi_{\theta}$ at batch size $1$, on one stated device, after a fixed warmup, summarized by the median of a fixed number of timed calls. Data loading, detection, and segmentation are excluded from this recognizer latency and, if measured, are given their own lines.
-\end{itemize}
-No device name, warmup length, or millisecond value is asserted in this note.
+\subsection{Qualitative Comparison}
+\label{sec:qualitative}
 
-The mask question for one backbone is the difference of two Rank-1 fractions measured on paired crops of the same frames,
-\begin{equation}
-    \Delta_{\mathrm{SAM}}
-    =
-    \operatorname{Rank\mbox{-}1}(I_{\mathrm{sam}})
-    -
-    \operatorname{Rank\mbox{-}1}(I_{\mathrm{box}}).
-    \label{eq:delta-sam}
-\end{equation}
-A positive value means the mask raised Rank-1. The sign is an outcome, not an assumption. The same difference can be formed for Rank-5. It is not formed for parameters or MACs, which do not depend on the crop when the resolution is unchanged.
+Figure~\ref{fig:qual-sam} is the qualitative comparison of the three SAM-fed variants. Each column is one variant. The row shows the same test query patch, which is a SAM crop, and the gallery patch that the variant ranks first. The figure is a slot: the patches have not been exported from the rerun, and no stand-in image is used.
 
-\subsection{Main Comparison}
-\label{sec:main-table}
+\begin{figure}[t]
+    \centering
+    \setlength{\fboxsep}{6pt}
+    \begin{minipage}[t]{0.31\linewidth}
+        \centering
+        \fbox{\parbox[c][3.2cm][c]{0.92\linewidth}{\centering\pending\\[0.4em]
+        \small query and top-1 gallery\\ convolutional variant}}
+        \par\vspace{0.4em}
+        \small (a) Convolutional variant
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.31\linewidth}
+        \centering
+        \fbox{\parbox[c][3.2cm][c]{0.92\linewidth}{\centering\pending\\[0.4em]
+        \small query and top-1 gallery\\ pruned Vision Transformer}}
+        \par\vspace{0.4em}
+        \small (b) Pruned Vision Transformer
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.31\linewidth}
+        \centering
+        \fbox{\parbox[c][3.2cm][c]{0.92\linewidth}{\centering\pending\\[0.4em]
+        \small query and top-1 gallery\\ residual variant}}
+        \par\vspace{0.4em}
+        \small (c) Residual variant
+    \end{minipage}
+    \caption{Qualitative comparison of the three SAM-fed variants on one identity-disjoint test query. Each panel will show the SAM-pre-cropped query and the gallery patch ranked first by that variant. Panels are empty until the RTX 4090 rerun exports them.}
+    \label{fig:qual-sam}
+\end{figure}
 
-The primary table has one row for each of the following systems, all on $I_{\mathrm{sam}}$.
-\begin{itemize}
-    \item The convolutional trunk (``YOLO-ReID''; Section~\ref{sec:branches}), unpruned, with ArcFace.
-    \item The pruned Vision Transformer with weight-magnitude head and channel pruning and ArcFace.
-    \item The residual-network branch standing in for Wang \emph{et al.}, trained with ArcFace instead of their mining loss.
-\end{itemize}
-The columns are Rank-1, Rank-5, parameters, multiply--accumulates, and single-image latency. This note leaves those columns empty.
+Figure~\ref{fig:curves} is the quantitative comparison plot. The horizontal axis is the evaluation epoch, at 200, 400, 600, 800, and 1000. The vertical axis is closed-set accuracy on the test identities. One series is drawn per variant. The series are not drawn in this draft: a curve would be a number, and the numbers are \pending{}.
 
-\subsection{Required Ablations}
-\label{sec:ablations}
+\begin{figure}[t]
+    \centering
+    \fbox{\parbox[c][3.4cm][c]{0.92\linewidth}{\centering
+    \pending\\[0.5em]
+    Closed-set accuracy against epoch (200, 400, 600, 800, 1000).\\
+    Three series, one per SAM-fed variant.\\
+    Drawn from the rerun logs; no curve is plotted here.}}
+    \caption{Learning curves of the three SAM-fed variants. The plot will be produced from the rank callback of the identity-disjoint rerun. Axis labels are fixed; the data are not.}
+    \label{fig:curves}
+\end{figure}
 
-Each ablation changes one factor. The query set, the shared objective, the ArcFace hyperparameters, and the input resolution stay fixed unless the factor under test is the crop.
+\subsection{Quantitative Results}
+\label{sec:results-tables}
 
-\textbf{Mask against box.}
-For each of the three branches, train one model on $I_{\mathrm{sam}}$ and one on the paired $I_{\mathrm{box}}$. The source frames, the split indices, and the manifest rows are those of the purified arm; the rectangular arm therefore changes the pixels and nothing else. Report Rank-1 and Rank-5, and report $\Delta_{\mathrm{SAM}}$ from \eqref{eq:delta-sam}. This is the $2\times 3$ comparison: two crops by three backbones.
+Table~\ref{tab:three-sam} is the main comparison of the three variants under uniform weights, on the full training identities, without F-ODS and without dynamic learning. Table~\ref{tab:curves} is the same runs read at the five evaluation epochs. Table~\ref{tab:fods} is the additional experimental group: F-ODS, dynamic learning, and the two together, each applied to the same three variants and scored on the same test identities. Every entry is \pending{}.
 
-\textbf{Pruning rate.}
-On the transformer only, sweep the nested rate $\rho$ over a grid fixed before the query evaluation. The unpruned transformer, $\rho=0$, is the origin of that grid. For each grid point report Rank-1 and the MACs of $\phi_{\theta}$. The natural plot is Rank-1 against MACs. This note does not declare a winning rate, because no query measurement has been made. Parameters and latency may be added as secondary axes; they are not substituted for MACs.
+\begin{table}[t]
+    \centering
+    \caption{Three SAM-fed variants on the identity-disjoint test identities. Uniform loss weights, no F-ODS, no dynamic learning. All entries are pending the RTX 4090 rerun.}
+    \label{tab:three-sam}
+    \begin{tabular}{lcccccc}
+        \toprule
+        Variant & Rank-1 & Rank-5 & Accuracy & mAP & Params & MACs \\
+        \midrule
+        Convolutional (YOLO-ReID) & \pending & \pending & \pending & \pending & \pending & \pending \\
+        Pruned Vision Transformer & \pending & \pending & \pending & \pending & \pending & \pending \\
+        Residual (Wang \emph{et al.}) & \pending & \pending & \pending & \pending & \pending & \pending \\
+        \bottomrule
+    \end{tabular}
+\end{table}
 
-\subsection{Accounting Checks Before Any Table Is Filled}
+\begin{table}[t]
+    \centering
+    \caption{Closed-set accuracy of the three SAM-fed variants at the five evaluation epochs. Pending the RTX 4090 rerun. These cells are the source of Figure~\ref{fig:curves}.}
+    \label{tab:curves}
+    \begin{tabular}{lccccc}
+        \toprule
+        Variant & 200 & 400 & 600 & 800 & 1000 \\
+        \midrule
+        Convolutional (YOLO-ReID) & \pending & \pending & \pending & \pending & \pending \\
+        Pruned Vision Transformer & \pending & \pending & \pending & \pending & \pending \\
+        Residual (Wang \emph{et al.}) & \pending & \pending & \pending & \pending & \pending \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[t]
+    \centering
+    \caption{F-ODS and farm-knowledge-guided dynamic learning, crossed with the three SAM-fed variants. The test identities are those of Table~\ref{tab:three-sam}. ``Uniform'' repeats that table's training pool and is the control for this group. All entries are pending the RTX 4090 rerun.}
+    \label{tab:fods}
+    \begin{tabular}{llcccc}
+        \toprule
+        Training pool & Variant & Rank-1 & Rank-5 & Accuracy & mAP \\
+        \midrule
+        Uniform & Convolutional & \pending & \pending & \pending & \pending \\
+        Uniform & Pruned ViT & \pending & \pending & \pending & \pending \\
+        Uniform & Residual & \pending & \pending & \pending & \pending \\
+        F-ODS, $D(N^{\star},m^{\star})$ & Convolutional & \pending & \pending & \pending & \pending \\
+        F-ODS, $D(N^{\star},m^{\star})$ & Pruned ViT & \pending & \pending & \pending & \pending \\
+        F-ODS, $D(N^{\star},m^{\star})$ & Residual & \pending & \pending & \pending & \pending \\
+        Dynamic learning & Convolutional & \pending & \pending & \pending & \pending \\
+        Dynamic learning & Pruned ViT & \pending & \pending & \pending & \pending \\
+        Dynamic learning & Residual & \pending & \pending & \pending & \pending \\
+        F-ODS and dynamic learning & Convolutional & \pending & \pending & \pending & \pending \\
+        F-ODS and dynamic learning & Pruned ViT & \pending & \pending & \pending & \pending \\
+        F-ODS and dynamic learning & Residual & \pending & \pending & \pending & \pending \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Table~\ref{tab:cost} records the server time of the same runs. It is pending for the same reason, and it is not filled from the voided preliminary run.
+
+\begin{table}[t]
+    \centering
+    \caption{Wall-clock training time on one RTX 4090 (48\,GB). Pending the identity-disjoint rerun. One row per cell of Table~\ref{tab:fods}.}
+    \label{tab:cost}
+    \begin{tabular}{llc}
+        \toprule
+        Training pool & Variant & Time (min) \\
+        \midrule
+        Uniform & Convolutional & \pending \\
+        Uniform & Pruned ViT & \pending \\
+        Uniform & Residual & \pending \\
+        F-ODS & Convolutional & \pending \\
+        F-ODS & Pruned ViT & \pending \\
+        F-ODS & Residual & \pending \\
+        Dynamic learning & Convolutional & \pending \\
+        Dynamic learning & Pruned ViT & \pending \\
+        Dynamic learning & Residual & \pending \\
+        F-ODS and dynamic learning & Convolutional & \pending \\
+        F-ODS and dynamic learning & Pruned ViT & \pending \\
+        F-ODS and dynamic learning & Residual & \pending \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Checks Before a Cell Is Filled}
 \label{sec:checks}
 
-The following conditions are part of the protocol and can be checked without quoting an accuracy.
+A cell may be filled only when all of the following hold.
 \begin{itemize}
-    \item The three main-table branches use one implementation of \eqref{eq:arcface} and one pair $(s,m_{\angle})$.
-    \item The mask and box arms of a paired comparison differ in the crop operator and not in the list of source frames.
-    \item A mask that fails refinement raises; no cell is produced from a fallback rectangle.
-    \item Parameter and MAC counts exclude the ArcFace class-weight matrix.
-    \item No reported figure originates from a placeholder or a stale metrics file.
+    \item The number came from the identity-disjoint rerun, not from an image-level split and not from the voided preliminary run.
+    \item The three variants in a row of Table~\ref{tab:three-sam} used one implementation of \eqref{eq:arcface} and one pair $(s,m_{\angle})$.
+    \item Every input patch was a SAM crop supplied to the pipeline. No localization output entered training or evaluation.
+    \item F-ODS and the dynamic-learning gates were frozen on validation identities. No test identity was used to choose $(N^{\star},m^{\star})$, a quality weight, a gate, or a checkpoint.
+    \item No pseudo-labeled patch was used as a query, a gallery image, or a prototype component.
+    \item Parameter and multiply--accumulate counts exclude the ArcFace class-weight matrix.
 \end{itemize}
 
 \begin{thebibliography}{9}
+
 \bibitem{deng2019arcface}
 J.~Deng, J.~Guo, N.~Xue, and S.~Zafeiriou,
 ``ArcFace: Additive angular margin loss for deep face recognition,''
@@ -286,4 +459,5 @@ Y.~Wang, C.~A.~M\"ucher, K.~Wang, W.~Wang, and L.~Kooistra,
 Y.~Wang, L.~Kooistra, S.~M\"ucher, and W.~Wang,
 ``Integrated unmanned aerial vehicle-based LiDAR and RGB data for individual cattle growth monitoring in precision livestock farming,''
 \emph{Sci. Data}, vol.~12, art.~1318, 2025, doi: 10.1038/s41597-025-04783-6.
+
 \end{thebibliography}
