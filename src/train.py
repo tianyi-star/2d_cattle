@@ -34,7 +34,7 @@ from src.data import (
     val_retrieval_rows,
 )
 from src.models import build_model, count_parameters
-from src.protocol import CROP_MODES, CROP_SAM, DISPLAY_NAMES, MODEL_NAMES, require_crop
+from src.protocol import ACCEPTED_CROPS, CROP_SAM, DISPLAY_NAMES, MODEL_NAMES, require_crop
 
 
 def _device() -> torch.device:
@@ -274,8 +274,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--crop",
         default=CROP_SAM,
-        choices=CROP_MODES,
-        help="sam uses the purified back pattern. bbox uses the YOLO box crop of the original frame.",
+        choices=ACCEPTED_CROPS,
+        help=(
+            "sam uses a mask crop. bbox uses a box crop. "
+            "id uses the identity folders as stored, with no mask and no detector crop."
+        ),
     )
     return parser
 

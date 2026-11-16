@@ -317,6 +317,34 @@ def test_runner_rejects_a_single_shared_directory_for_both_arms(tiny_dataset, tm
     assert "prepared mode needs" in (result.stderr + result.stdout)
 
 
+def test_runner_manifest_only_reads_identity_folders(tiny_dataset, tmp_path):
+    """A data root of <identity_id>/* is used as stored. No sam/ tree is required."""
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "--data-root",
+            str(tiny_dataset["root"]),
+            "--results-root",
+            str(tmp_path / "results"),
+            "--outputs-root",
+            str(tmp_path / "outputs"),
+            "--manifest-only",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "Crop label: id" in result.stdout
+    assert "SAM is not run" in result.stdout
+    manifest = tiny_dataset["root"] / "manifest_id_seed_0.csv"
+    assert manifest.is_file()
+    assert (tiny_dataset["root"] / "manifest_id_seed_0.table1.md").is_file()
+
+
 def test_runner_dry_run_plans_without_training(tiny_dataset, tmp_path):
     data_root = _two_arm_root(tiny_dataset, tmp_path)
     results_root = tmp_path / "results"

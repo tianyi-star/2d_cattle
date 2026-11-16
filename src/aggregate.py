@@ -39,7 +39,15 @@ from src.data import (
     render_split_markdown,
     write_split_artifacts,
 )
-from src.protocol import CROP_BBOX, CROP_MODES, CROP_SAM, DISPLAY_NAMES, MODEL_NAMES
+from src.protocol import (
+    ACCEPTED_CROPS,
+    CROP_BBOX,
+    CROP_MODES,
+    CROP_SAM,
+    DISPLAY_NAMES,
+    MODEL_NAMES,
+    require_crop,
+)
 
 SUMMARY_KIND = "measured_six_cells"
 REQUIRED_METRIC_KEYS = ("rank1", "rank5", "parameters", "flops", "num_gallery", "num_query")
@@ -356,23 +364,19 @@ def _fmt(stat: dict, digits: int = 4) -> str:
 
 def render_markdown(summary: dict) -> str:
     crops = summary.get("crops") or list(CROP_MODES)
-    header = ["Model", *(f"Rank-1 ({crop})" for crop in crops), "Δ_SAM (Rank-1)", "Parameters", "MACs"]
+    has_delta = any(cell.get("delta_sam") for cell in summary["cells"])
+    header = ["Model", *(f"Rank-1 ({crop})" for crop in crops)]
+    if has_delta:
+        header.append("Δ_SAM (Rank-1)")
+    header.extend(["Parameters", "MACs"])
     lines = ["| " + " | ".join(header) + " |", "|" + "|".join(["---"] * len(header)) + "|"]
     for cell in summary["cells"]:
         ranks = [_fmt(cell.get(f"rank1_{crop}", {})) for crop in crops]
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    cell["display_name"],
-                    *ranks,
-                    _fmt(cell.get("delta_sam", {}), 4),
-                    f"{cell['parameters']:,}",
-                    f"{int(cell['flops']):,}",
-                ]
-            )
-            + " |"
-        )
+        fields = [cell["display_name"], *ranks]
+        if has_delta:
+            fields.append(_fmt(cell.get("delta_sam", {}), 4))
+        fields.extend([f"{cell['parameters']:,}", f"{int(cell['flops']):,}"])
+        lines.append("| " + " | ".join(fields) + " |")
     seeds = summary.get("seeds") or []
     provenance = summary.get("provenance") or {}
     footer = [
@@ -470,6 +474,13 @@ def build_parser() -> argparse.ArgumentParser:
     summary.add_argument("--config", required=True)
     summary.add_argument("--started-at", type=float, required=True)
     summary.add_argument("--seeds", nargs="+", type=int, required=True)
+    summary.add_argument(
+        "--crops",
+        nargs="+",
+        default=list(CROP_MODES),
+        choices=ACCEPTED_CROPS,
+        help="Crop labels that were actually trained. Default is the sam/bbox pair.",
+    )
     return parser
 
 
@@ -563,6 +574,7 @@ def main(argv: list[str] | None = None) -> int:
             seeds=args.seeds,
             started_at=args.started_at,
             config_path=args.config,
+            crops=tuple(require_crop(crop) for crop in args.crops),
         )
         print(render_markdown(summary), flush=True)
         print(f"Wrote {Path(args.results_dir).resolve()}", flush=True)

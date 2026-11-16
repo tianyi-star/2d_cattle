@@ -1,4 +1,4 @@
-# Individual cattle identification from SAM-pre-cropped UAV coat patches
+# Individual cattle identification from UAV-RGB images organized by identity
 
 **Authors**
 
@@ -10,7 +10,7 @@ Tianyi Ma^a,^\*
 
 ## Abstract
 
-Individual identification from imagery lets a herd be managed as animals rather than as a group. Wang et al. (2025a) showed that dorsal coat pattern supports this task, and they released a deep-metric-learning practice built on an open UAV-RGB collection of 96 cattle. This study uses that same UAV-RGB herd. The patches supplied to every experiment were cropped in advance with a Segment Anything mask of the back coat. No localization stage is part of the pipeline. Three embedding networks are trained under one ArcFace objective and one identity-disjoint partition, so that a correct match cannot be a near-duplicate frame of an animal already seen in training. A further group adds farm-aware optimal dataset selection (F-ODS) and farm-knowledge-guided self-supervised dynamic learning. Rank-1, rank-5, closed-set accuracy and mean average precision are pending the rerun on NVIDIA GeForce RTX 4090(48GB).
+Individual identification from imagery lets a herd be managed as animals rather than as a group. Wang et al. (2025a) showed that dorsal coat pattern supports this task, and they released a deep-metric-learning practice built on an open UAV-RGB collection of 96 cattle. This study uses that same UAV-RGB herd. Every experiment reads those images as stored, one folder per identity. No SAM mask and no detector crop are built. Three embedding networks are trained under one ArcFace objective and one identity-disjoint partition, so that a correct match cannot be a near-duplicate frame of an animal already seen in training. A further group adds farm-aware optimal dataset selection (F-ODS) and farm-knowledge-guided self-supervised dynamic learning. Rank-1, rank-5, closed-set accuracy and mean average precision are pending the rerun on NVIDIA GeForce RTX 4090(48GB).
 
 **Keywords:** cattle identification; coat pattern; unmanned aerial vehicle; ArcFace; identity-disjoint evaluation
 
@@ -20,7 +20,7 @@ Precision livestock farming needs a record that stays attached to one animal. Ea
 
 Wang et al. (2025a) treated that cue directly. They trained a deep metric learner on the open UAV-RGB set of 96 Simmental males and checked it on a ground-RGB set of the same herd and on an external Holstein set. Their published figures were obtained under their mining objective and their own split. They are not results of the protocol below.
 
-This paper asks a narrower question on the same UAV-RGB images. The images are already SAM-pre-cropped, so the comparison does not include a detector or a second crop of the original frame. Three networks that differ in capacity share the loss, the resolution and an identity-disjoint split. F-ODS and a quality-gated self-training stage are then added as a separate group. All recognition numbers are pending the rerun on NVIDIA GeForce RTX 4090(48GB). No figure from an image-level split is used.
+This paper asks a narrower question on the same UAV-RGB images. The comparison does not build a SAM mask or a detector crop. Three networks that differ in capacity share the loss, the resolution and an identity-disjoint split. F-ODS and a quality-gated self-training stage are then added as a separate group. All recognition numbers are pending the rerun on NVIDIA GeForce RTX 4090(48GB). No figure from an image-level split is used.
 
 ## 2. Relation to coat-pattern identification
 
@@ -28,7 +28,7 @@ Coat-pattern re-identification was established on ground imagery of Holstein cat
 
 The loss is the additive angular margin of Deng et al. (2019). The three trunks are a small convolutional network, a pruned Vision Transformer (Dosovitskiy et al., 2021) and a ResNet-50 (He et al., 2016). The ResNet stands in for the capacity of the coat-pattern networks used by Wang et al. (2025a). It is trained from random initialization under ArcFace. It is not their released model, and their scores are not entered in our tables.
 
-The patches were masked with the Segment Anything model (Kirillov et al., 2023) before this pipeline. Masking is therefore a property of the input, not a factor we ablate.
+The images are the UAV-RGB files as released, one directory per animal. This study does not mask them and does not crop them again.
 
 ## 3. Materials and methods
 
@@ -36,11 +36,11 @@ The patches were masked with the Segment Anything model (Kirillov et al., 2023) 
 
 Let $x$ be a dorsal-coat patch and $y(x)$ its identity when known. A model is an embedding $\phi_\theta$ trained so that the cosine of $\ell_2$-normalized embeddings is large within an identity and small across identities. At test time the ArcFace matrix is discarded.
 
-Every $x$ is a patch cropped in advance by a SAM mask of the back coat. The pipeline starts at that patch. It does not detect cattle and it does not build a second crop of the source frame. Grass, hard shadow and limbs excluded by the mask are already absent.
+Every $x$ is one UAV-RGB image from an identity folder. The pipeline starts at that file. It does not run a segmenter and it does not run a detector.
 
 The present experiment has two blocks, both scored on the same test identities.
 
-1. Three SAM-fed variants, trained with uniform weights on all training patches of the training identities: the convolutional trunk, the pruned Vision Transformer, and the ResNet-50.
+1. Three variants, trained with uniform weights on all training images of the training identities: the convolutional trunk, the pruned Vision Transformer, and the ResNet-50.
 2. The same three variants under F-ODS, under farm-knowledge-guided dynamic learning, and under both.
 
 ### 3.2 Data acquisition
@@ -83,7 +83,7 @@ Closed-set rank-$k$ is the fraction of test queries whose true identity is among
 
 UAV sets are long-tailed: animals under the flight path contribute many patches, and animals at the edge, lying, or blurred contribute few. F-ODS selects a smaller training support. It does not remove test patches, and a low-quality test patch is still scored.
 
-Five scores in $[0,1]$ are computed on each training patch $x$. $F(x)$ is the retained animal region inside the patch domain $\Omega$. Percentiles and the reference aspect ratio are fit on training identities only.
+Five scores in $[0,1]$ are computed on each training image $x$. $F(x)$ is that image and $\Omega$ is its frame. No mask is available, so the score uses the stored pixels. Percentiles and the reference aspect ratio are fit on training identities only.
 
 Body visibility $V$ penalises padding, truncation at the patch border and a second animal. With $T(x)$ the part of $F(x)$ that touches the border and $O(x)$ the part of the patch belonging to another animal,
 
@@ -131,7 +131,7 @@ In the F-ODS arm the loss weight of a selected patch is $w_i=Q(x_i)$. Identities
 
 ### 3.7 Farm-knowledge-guided self-supervised dynamic learning
 
-This stage admits further SAM-pre-cropped patches that have no label the loss may trust. “Self-supervised” means self-training: the current model proposes the identity, and $Q$ decides whether the proposal may enter training. The ArcFace loss is not replaced by a contrastive pretext task.
+This stage admits further images from the same identity-folder collection that have no label the loss may trust. “Self-supervised” means self-training: the current model proposes the identity, and $Q$ decides whether the proposal may enter training. The ArcFace loss is not replaced by a contrastive pretext task.
 
 The unlabeled pool $\mathcal{U}$ excludes every patch that can be linked to a validation or test identity, including other frames from the same flight sequence as a held-out animal. If that exclusion leaves $\mathcal{U}$ empty, the arm is reported as not run. It is not filled with held-out animals. $Q$ on $\mathcal{U}$ uses the normalizers and coefficients already frozen in Section 3.6.
 
@@ -143,15 +143,15 @@ Both gates are set on the validation identities before the test identities are r
 
 ### 3.8 Stages not implemented
 
-**In the present experiment, measurements pending on NVIDIA GeForce RTX 4090(48GB).** The three SAM-fed variants with uniform weights. F-ODS, including $Q$, the selection objective, $(N^{\star},m^{\star})$ and the weight $w_i=Q(x_i)$. Farm-knowledge-guided dynamic learning, including the two gates. These rows are the tables in Section 4. A row in the protocol is not a measured result.
+**In the present experiment, measurements pending on NVIDIA GeForce RTX 4090(48GB).** The three variants with uniform weights. F-ODS, including $Q$, the selection objective, $(N^{\star},m^{\star})$ and the weight $w_i=Q(x_i)$. Farm-knowledge-guided dynamic learning, including the two gates. These rows are the tables in Section 4. A row in the protocol is not a measured result.
 
-**Not in this study.** A localization stage or a second crop of the original frame. Inputs are already SAM patches, so no such arm is trained. Pruning by embedding discriminability. The transformer uses weight magnitude; the geometry criterion is future work and has no row. Any image-level or within-identity split. That partition is excluded, not deferred. Published scores from Wang et al. (2025a). They were produced under a different objective and are not written into Section 4.
+**Not in this study.** A SAM mask and a detector crop. The images are used as stored, so neither arm is trained. Pruning by embedding discriminability. The transformer uses weight magnitude; the geometry criterion is future work and has no row. Any image-level or within-identity split. That partition is excluded, not deferred. Published scores from Wang et al. (2025a). They were produced under a different objective and are not written into Section 4.
 
 ## 4. Results
 
 No cell below has been filled. Each entry waits on the identity-disjoint rerun on NVIDIA GeForce RTX 4090(48GB). Placeholder curves and tables from earlier drafts are not a source.
 
-### 4.1 Three SAM-fed variants
+### 4.1 Three variants
 
 Table 1 is the uniform-weight comparison. Table 2 is closed-set accuracy at the five evaluation epochs and is the source of the learning-curve figure, which is not plotted until the logs exist.
 
@@ -161,7 +161,7 @@ Table 1 is the uniform-weight comparison. Table 2 is closed-set accuracy at the 
 | Pruned Vision Transformer | pending | pending | pending | pending | pending | pending |
 | ResNet-50 | pending | pending | pending | pending | pending | pending |
 
-*Table 1. Three SAM-fed variants on the identity-disjoint test identities. Uniform weights, no F-ODS, no dynamic learning. Pending the rerun on NVIDIA GeForce RTX 4090(48GB).*
+*Table 1. Three variants on the identity-disjoint test identities. Images are used as stored. Uniform weights, no F-ODS, no dynamic learning. Pending the rerun on NVIDIA GeForce RTX 4090(48GB).*
 
 | Variant | 200 | 400 | 600 | 800 | 1000 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -210,11 +210,11 @@ Figure 1 will show one identity-disjoint test query and the gallery patch ranked
 | --- | --- | --- |
 | pending: query and top-ranked gallery patch | pending: query and top-ranked gallery patch | pending: query and top-ranked gallery patch |
 
-*Figure 1. Qualitative comparison of the three SAM-fed variants. Pending export from the NVIDIA GeForce RTX 4090(48GB) rerun.*
+*Figure 1. Qualitative comparison of the three variants. Pending export from the NVIDIA GeForce RTX 4090(48GB) rerun.*
 
 ## 5. Discussion
 
-Once the cells are filled, the comparison is between trunks on a fixed coat crop, and between a raw training pool and a pool restricted by $Q$ and by the two gates. It is not a comparison of mask against an unmasked frame, because no unmasked frame enters the pipeline.
+Once the cells are filled, the comparison is between trunks on the images as stored, and between the full training pool and a pool restricted by $Q$ and by the two gates. It is not a mask-versus-box comparison, because neither crop is built.
 
 The herd is one group of 96 animals, the group described by Wang et al. (2025a). A rank on that group does not by itself transfer to another breed or another farm. The test is closed-set: every query identity is enrolled. An animal that is not in the gallery is outside the reported metrics. Checkpoint selection uses validation identities, so the test set is not used to pick the weights. Magnitude pruning reduces the transformer without asking whether a unit separates identities; that question is left open.
 
@@ -253,8 +253,6 @@ Deng, J., Guo, J., Xue, N., Zafeiriou, S., 2019. ArcFace: Additive angular margi
 Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer, M., Heigold, G., Gelly, S., Uszkoreit, J., Houlsby, N., 2021. An image is worth 16x16 words: Transformers for image recognition at scale, in: International Conference on Learning Representations. arXiv:2010.11929.
 
 He, K., Zhang, X., Ren, S., Sun, J., 2016. Deep residual learning for image recognition, in: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 770–778. https://doi.org/10.1109/CVPR.2016.90
-
-Kirillov, A., Mintun, E., Ravi, N., Mao, H., Rolland, C., Gustafson, L., Xiao, T., Whitehead, S., Berg, A.C., Lo, W.-Y., Dollár, P., Girshick, R., 2023. Segment Anything, in: Proceedings of the IEEE/CVF International Conference on Computer Vision, pp. 3992–4003. https://doi.org/10.1109/ICCV51070.2023.00371
 
 Wang, Y., 2024. Dataset for cattle growth monitoring in PLF using UAV-based LiDAR. Zenodo. https://doi.org/10.5281/zenodo.13364663
 
