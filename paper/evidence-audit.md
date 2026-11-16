@@ -384,6 +384,29 @@ archive is on the author's GPU server and not reachable here. The proportions ar
 first run writes, not from this audit.
 
 
+### 8.1 A preliminary six-cell run existed and was discarded
+
+A six-cell run was carried out before this defect was identified, under the within-identity split
+described above. Its results are **not reported and must not be reported**: the split leaks
+identity across train, gallery and query, so every rank-1 it produced measures partly the recall of
+animals the model was trained on, and the near-duplicate structure of consecutive UAV frames adds a
+second, independent inflation on top. A timing or cost figure from that run would be equally
+unusable, because that run is a different experiment from the one the paper specifies — its
+per-cell wall-clock times and its compute cost describe work under an invalid protocol.
+
+Accordingly:
+
+* the manuscript's Table 3 (per-cell training time), the study's compute cost, and every retrieval
+  cell are left as `【待补】`, pending the identity-disjoint rerun;
+* **no figure from the discarded run is reproduced anywhere in this audit either** — not its
+  timings, not its cost, not its metrics — because a number written down here would be available to
+  copy later;
+* the only reported facts about it are these: it existed, it used the within-identity split, and it
+  was discarded for that reason.
+
+The hardware (a single RTX 4090, 48 GB) survives in the manuscript because it is a property of the
+machine rather than of the discarded run, and the same machine will run the replacement.
+
 ## 9. Settings that are documented and can be reported as *design*, not as outcome
 
 From `configs/experiment.yaml` (paper config):

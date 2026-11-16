@@ -358,10 +358,11 @@ The imagery analysed in this study is obtained from the Zenodo archive of Wang (
 stored locally on our GPU server at `/home/iadi/UAV-basedData/RGB-data/individaulsByIds`. The
 local copy is organised as one directory per animal; the directory names are the herd identifiers
 and are not contiguous, so the collection is described throughout by its identity count rather
-than by its identifier range. The archive documents 96 semi-free-range beef cattle, and the
-companion record (Wang, 2024, `10.5281/zenodo.13361729`) records them as 96 Simmental male beef
-cattle; we therefore describe the herd as 96 Simmental beef cattle and cite those records for the
-claim rather than asserting it as our own observation.
+than by its identifier range. The archive documents 96 semi-free-range beef cattle; the companion
+record (`10.5281/zenodo.13361729`) states "96 Simmental male beef cattle", and Wang et al. (2025a)
+describe "a semi-free-range Simmental male beef cattle herd of 96 individuals". We therefore
+describe the herd as 96 Simmental beef cattle, all male, and cite both sources for the claim rather
+than asserting it as our own observation.
 
 <!-- Provenance, as confirmed by the author (this supersedes two earlier drafts, one of which
      wrongly called the data private and one of which wrongly denied the Zenodo origin):
@@ -397,29 +398,103 @@ preprocessing detail. For livestock management the practical consequence is dire
 that survives an aerial view can be run off survey flights a growth-monitoring programme is already
 making, which is what makes per-animal records affordable in a pasture system.
 
-**Capture parameters.** The site, campaign dates, platform and sensor are documented in the data
-article accompanying the archive (Wang et al., 2025b). Where the present study
-depends on a parameter that the archive documents, we cite the record; where the parameter affects
-the recognition geometry but is not pinned down for this local copy, we leave it to be confirmed
-against the flight logs rather than restating a figure we have not verified.
+**Capture parameters.** The acquisition is documented in the data article accompanying the archive
+(Wang et al., 2025b) and in the archive record itself (Wang, 2024); we report the values those
+sources state rather than re-deriving them from imagery. Table 1 collects them.
 
-【待补: 飞行高度与地面采样距离 (GSD)、相机型号与焦距、原始图像分辨率、飞行架次与日期、
-      养殖场位置与圈舍/放牧地布局、光照条件范围——须据飞行记录或数据文章逐项核对后填写；
-      不得由图像推测，也不得照抄其他研究】
+| Parameter | Value | Source |
+| --- | --- | --- |
+| Site | Xinshiji commercial farm, Changge County, Henan Province, China | Wang et al. (2025b) |
+| Campaign dates | 31 December 2022 – 9 January 2023 | Wang et al. (2025b) |
+| Platform | DJI M300 UAV | Wang et al. (2025b), Table 1 |
+| Primary sensor | Zenmuse L1 LiDAR, 240 kHz sampling, single return mode, RGB colouring on | Wang et al. (2025b), Table 1 |
+| Flight heights | 8, 10, 15, 30 and 50 m | Wang et al. (2025b), Table 1 |
+| Flight speeds | 1, 2, 3, 5, 7 and 9 m s⁻¹ | Wang et al. (2025b), Table 1 |
+| Gimbal pitch | −90° (nadir) | Wang et al. (2025b), Table 1 |
+| RGB frame rate | 1/3 Hz, acquired by the camera integrated with the LiDAR and tied to the scan | Wang et al. (2025b) |
+| Animals | 96 semi-free-range beef cattle | Wang et al. (2025b); Wang (2024) |
+| Breed and sex | Simmental, male | `10.5281/zenodo.13361729`; Wang et al. (2025a) |
+| Live weight | mean 225.4 kg, SD 20.1 kg (n = 96), from the ground weighing campaign | Wang et al. (2025b) |
+| Pen layout | three pens covering the experimental area | Wang et al. (2025b) |
+| Illumination | 0–59.1 klx | Wang et al. (2025b) |
+| Wind speed (ground) | 0–6.6 m s⁻¹ | Wang et al. (2025b) |
+| Air temperature | −1.5 to 18.9 °C | Wang et al. (2025b) |
 
-Animal-level metadata is needed for the same reason: a reader cannot judge whether a coat-based
-result will transfer without knowing what the coats look like.
-【待补: 毛色与花纹类型分布、性别与月龄范围、体重区间——品种已据 Zenodo 记录 13361729 定为
-      96 头西门塔尔公牛，其余须由牧场记录提供】
+*Table 1. Acquisition parameters as documented by the archive and its data article.*
 
-**Annotation.** Annotation is at the level of identity, not of pixels. Each image is assigned to
-the folder of the animal it depicts, and that folder label is the only supervision used. No
-segmentation mask is annotated: the mask-purified arm is produced by prompting a segmentation
-model with the detector box, so the cost of the masking stage is inference time rather than
-labelling time.
+<!-- SOURCING NOTE. Every value in Table 1 was read from one of the three sources during the
+     preparation of this revision; none is inferred from imagery or carried over from another
+     study. Specifics:
+       - "Data collection took place at the Xinshiji commercial farm in Changge County, Henan
+         Province, China, from December 31, 2022, to January 9, 2023" - Wang et al. 2025b, Methods.
+       - "illumination values ranging from 0 to 59.1 Klx, ground wind speeds from 0 to 6.6 m/s,
+         and ground temperatures from -1.5 to 18.9 degrees Celsius" - Wang et al. 2025b.
+       - "During the scan of the LiDAR sensor, the integrated RGB camera operated at a frequency
+         of 1/3 Hz from the consistent viewpoint, capturing images to generate colorized point
+         clouds" - Wang et al. 2025b. NOTE: this describes the RGB imagery as the colour channel
+         of the LiDAR scan, not as a separate RGB survey. That is how the archive documents it.
+       - Table 1 of Wang et al. 2025b: UAV DJI M300, heights 8/10/15/30/50 m, speeds
+         1/2/3/5/7/9 m/s, gimbal pitch -90 deg, Zenmuse L1 at 240 kHz single-return with RGB
+         colouring on.
+       - "a herd (n = 96) with an average weight of 225.4 kg and a standard deviation of 20.1 kg"
+         - Wang et al. 2025b.
+       - "three pens" and "a gallery of individuals for three pens, resulting in a gallery of 96
+         individual animals" - Wang et al. 2025b.
+       - Breed and sex: companion Zenodo record 10.5281/zenodo.13361729 states "96 Simmental male
+         beef cattle in the datasets UAV-RGB and Ground-RGB"; Wang et al. 2025a abstract states
+         "semi-free-range Simmental male beef cattle herd of 96 individuals". Both agree.
+     The earlier draft of this section asked the author for these values; that request was
+     unnecessary because the sources state them. -->
 
-【待补: 标注流程细节——标注人员数量与培训、身份核对方式（是否与耳标/牧场记录交叉验证）、
-疑难样本（遮挡、多牛同框、部分出画）的处理规则、标注一致性检查结果】
+Two acquisition details are **not** reported in any of the three sources, and we therefore state
+that plainly rather than supplying a value: the **ground sampling distance** of the RGB imagery,
+and the **camera model, focal length and native image resolution** of the RGB sensor. The data
+article names the LiDAR payload and its RGB colouring function but gives no optical parameters for
+the RGB camera, and gives no GSD. Because recognition operates on 224 × 224 crops resampled from
+whatever the source resolution is (Section 3.6), a reader cannot presently convert our crop size
+back to a physical footprint; we flag this as a reporting gap in the source material rather than
+estimate it.
+
+One further point of provenance bears on how the imagery should be interpreted. The source
+describes the RGB frames as captured by the camera integrated with the LiDAR scanner, operating at
+1/3 Hz from a fixed viewpoint and used to colour the point cloud, rather than as an independent
+photogrammetric RGB survey (Wang et al., 2025b). The still frames our recogniser consumes are
+therefore tied to the scan geometry, and are not a separate acquisition with its own exposure and
+framing policy. We state this because it constrains the flight heights and view angles that apply to
+our data: the 8–50 m range in Table 1 is the LiDAR campaign's range, and the review work of Wang et
+al. (2023) notes that height and speed materially affect data quality in exactly this setting.
+
+<!-- ABSENT FROM SOURCES - verified by search, not assumed:
+     searched the full text of Wang et al. 2025b for "ground sampling", "GSD", "cm/pixel",
+     "spatial resolution", "pixel size", "mm/pixel", "focal", "FOV", "field of view",
+     "megapixel", "image size", "pixels" - no matches. The Zenodo records 13364663 and 13361729
+     contain no technical parameters at all (record 13364663 description is one sentence naming
+     the data article; 13361729 describes the D96 herd only). The CEA paper (2025a) is paywalled
+     at ScienceDirect; its OpenAlex abstract describes the herd and the DML method but states no
+     GSD. So GSD and RGB optics are genuinely unreported across all three sources. -->
+
+**Annotation.** Identity annotation for the RGB data follows the four-step procedure documented
+with the archive (Wang et al., 2025b). A gallery of individuals was first assembled from
+ground-based weighing records for the three pens, giving 96 identified animals. Individual identity
+was then annotated on integrated pen-level images in Agisoft Metashape (36 PNG images, 12 per pen).
+Cattle instances in the UAV imagery were boxed with labelImg 1.8.6 following the VOC 2012
+conventions (140 JPG images). Instance segmentation was finally produced by prompting the Segment
+Anything model with those boxes, yielding 1,801 segmented instances. Our study consumes the
+per-identity folders produced by this pipeline; each image carries the folder label of the animal
+it depicts, and that label is the only supervision we use.
+
+<!-- Sourcing: all numbers in the paragraph above are from Wang et al. 2025b, "Segmentation of RGB
+     data was conducted in four steps" - gallery from weighing records for three pens = 96 animals;
+     Agisoft Metashape, 36 .png, 12 per pen; labelImg v1.8.6, VOC 2012, 140 JPG; SAM prompting
+     with bounding boxes, 1,801 instances. -->
+
+What the sources do not document is the reliability of that annotation: no inter-annotator
+agreement figure, no stated protocol for ambiguous cases (partial occlusion, two animals in one
+box, an animal leaving the frame), and no separate identity audit beyond the weighing-record
+gallery. We note this as a limitation rather than implying an annotation quality we cannot cite.
+
+【待补: 标注一致性——如数据文章或随附代码中另有一致性检查或复核记录，须补入；
+      若确无，正文已按"源文献未报告"表述，无需再填】
 
 ### 3.2.1 Identity-disjoint partitioning
 
@@ -448,7 +523,7 @@ a farm actually cares about when a new group of cattle arrives.
 The split is fixed once, recorded in the manifest, and shared by all six cells and all ablation
 arms, so that no comparison between backbones or between crops is confounded by a difference in
 which animals were held out. The training, validation and test identity counts are reported in
-Table 1.
+Table 2.
 
 The partition is drawn by sorting the identity identifiers, shuffling them with a fixed random seed,
 and assigning whole animals to the three sets in that order; the seed, the split mode, the requested
@@ -460,9 +535,9 @@ manifest records the realised counts and any animal excluded, with the reason. A
 for the test set only if it contributes at least two frames, one for the gallery and one for the
 query; this keeps a single-frame animal from being unretrievable by construction. Both crop arms
 reuse the same recorded partition, so the SAM and box columns are evaluated on the same held-out
-animals. Table 1 is filled from that manifest rather than transcribed from a separate record.
+animals. Table 2 is filled from that manifest rather than transcribed from a separate record.
 
-Table 1 accounts for the images and identities that enter each split. Both crop arms draw on the
+Table 2 accounts for the images and identities that enter each split. Both crop arms draw on the
 same accounting, so the table has one version rather than one per arm.
 
 | Quantity | Value |
@@ -478,12 +553,12 @@ same accounting, so the table has one version rather than one per arm.
 | Images per identity: mean ± SD | 【待补】 |
 | Identities excluded, with reason | 【待补】 |
 
-*Table 1. Data accounting for the identity-disjoint partition. Identities are counted once and
+*Table 2. Data accounting for the identity-disjoint partition. Identities are counted once and
 appear in exactly one set; a query image and a gallery image of the same animal are never two
 views exported from the same detection. The three identity counts must sum to 96 minus any
 excluded animals, and the exclusions must be reported here rather than silently absorbed.*
 
-<!-- No value in Table 1 has been measured. The local copy lives on the author's GPU server and
+<!-- No value in Table 2 has been measured. The local copy lives on the author's GPU server and
      was not reachable from the environment where this draft was prepared, so neither the
      per-identity image counts nor the split assignment have been verified. The 96 identity count
      is documented by the Zenodo archive records (13364663; 13361729) and the data article
@@ -604,7 +679,7 @@ comparison and the architecture family most frequently used in the cattle-identi
 literature.
 
 <!-- All three are constructed in src/models.py and were instantiated during the audit.
-     Parameter and MAC figures in Table 5 were produced by calling the repository's own
+     Parameter and MAC figures in Table 6 were produced by calling the repository's own
      count_parameters() and estimate_flops() at 224x224 with configs/experiment.yaml. -->
 
 Because the three backbones differ in capacity by more than an order of magnitude, comparing their
@@ -645,9 +720,10 @@ so that no cell can be tuned independently of the others.
 | Input resolution | 224 × 224 | `configs/experiment.yaml` |
 | Embedding dimension | 512 | `configs/experiment.yaml` |
 | Batch size | 8 | `configs/experiment.yaml` |
-| Epoch budget | 【待补】 | see note below |
-| Optimiser | Adam | `src/train.py:93` |
-| Learning rate | 1 × 10⁻⁴ | `configs/experiment.yaml` |
+| Epoch budget | 1000 | `configs/experiment.yaml` |
+| Optimiser | Adam | `src/train.py:114` |
+| Learning rate | 1 × 10⁻⁴, constant | `configs/experiment.yaml`; `src/train.py:114-118` |
+| Learning-rate schedule | none | `src/train.py` constructs the optimiser only, with no scheduler |
 | Weight decay | 1 × 10⁻⁴ | `configs/experiment.yaml` |
 | ArcFace scale $s$ | 64.0 | `configs/experiment.yaml` |
 | ArcFace margin $m$ | 0.5 | `configs/experiment.yaml` |
@@ -655,21 +731,16 @@ so that no cell can be tuned independently of the others.
 | Rank callback interval | every 200 epochs | `configs/experiment.yaml` |
 | Training hardware | 1 × NVIDIA GeForce RTX 4090 (48 GB) | as run |
 
-*Table 2. Shared training configuration. Every value is read from one file and is identical for
+*Table 3. Shared training configuration. Every value is read from one file and is identical for
 all six cells; the table is a description of the protocol, not of an outcome.*
 
-<!-- EPOCH BUDGET — UNRESOLVED, DO NOT GUESS.
-     The committed configs/experiment.yaml was changed on main from epochs:30 / eval_every:5 to
-     epochs:1000 / eval_every:200 (compare commits d20763e..7390aee). The row above previously
-     read "Epoch budget 30". Neither 30 nor 1000 has been confirmed by the author as the budget
-     the reported runs actually used, and the per-cell training times supplied below are not
-     enough on their own to settle it without assuming a per-epoch time we do not have.
-     Keep 【待补】 until the author confirms. Table 2 now quotes eval_every:200, which matches the
-     config on main; if the reported runs used 30 epochs they must have used eval_every:5, so the
-     two rows have to be confirmed together. -->
-【待补: 训练轮次（epoch budget）与学习率调度——须确认报告结果所用配置；
-      仓库中 configs/experiment.yaml 现为 epochs:1000、eval_every:200，
-      而更早版本为 epochs:30、eval_every:5，两者不一致，不得任选其一】
+<!-- Epoch budget 1000 and eval_every 200 are now confirmed by the author as the values used for
+     the reported runs, and they match configs/experiment.yaml on main. The earlier 30/5 values
+     were a stale config, not a second experiment. No learning-rate schedule exists: the config
+     sets a single constant learning_rate:0.0001 and src/train.py builds torch.optim.Adam with no
+     lr_scheduler anywhere in the file. Verified by grepping train.py for scheduler/warmup/cosine/
+     step - no matches. The row therefore states "none" as a positive fact about the config, not
+     as an unknown. -->
 
 Augmentation is deliberately minimal, because aggressive augmentation would interact with the crop
 factor: resizing to 224 × 224, random horizontal reflection with probability 0.5, colour jitter on
@@ -682,53 +753,48 @@ the dorsal coat pattern is not chiral, and because both arms receive it identica
 
 The training loop is a fixed-epoch procedure with no early stopping and no learning-rate schedule.
 <!-- src/train.py:113-158 -->
-A rank-1/rank-5 callback evaluates the current model on the gallery and query splits at the
-configured interval and at the final epoch, and the checkpoint with the best observed rank-1 is
-retained.
-<!-- src/callbacks.py:19-52; src/train.py:137-156 -->
-This is a model-selection step and is reported as such: it uses gallery and query data, and the
-selection criterion is therefore not independent of the reported metric. It is applied identically
-to all six cells, so it does not favour one cell over another, but it does mean that the reported
-figures are best-observed rather than single-final-epoch values.
+A rank-1/rank-5 callback evaluates the current model every 200 epochs, and at the final epoch,
+which for a 1000-epoch budget gives evaluations at epochs 200, 400, 600, 800 and 1000. The
+checkpoint with the best observed rank-1 is retained.
+<!-- src/callbacks.py should_run = epoch % every_n_epochs == 0 or epoch == epochs;
+     src/train.py selects checkpoint_best.pt on an improved rank-1. -->
+On the identity-disjoint manifest this selection uses the validation animals only. The test gallery
+and query are not read until evaluation. The same rule is applied to every cell, so it does not
+favour one cell over another. The reported figures are the best validation checkpoint rather than
+the single final-epoch weights.
 
-**Compute.** All six cells were trained on a single NVIDIA GeForce RTX 4090 (48 GB). Wall-clock
-training time per cell is given in Table 3, in the row order used throughout this paper
+**Compute.** All six cells are trained on a single NVIDIA GeForce RTX 4090 (48 GB). Wall-clock
+training time per cell will be reported in Table 4, in the row order used throughout this paper
 (convolutional trunk, then Vision Transformer, then ResNet-50; within each backbone the
 mask-purified arm precedes the box arm).
 
 | Backbone | Crop | Training time (min, wall clock) |
 | --- | --- | ---: |
-| Convolutional trunk | $I_{\mathrm{sam}}$ | 20 |
-| Convolutional trunk | $I_{\mathrm{box}}$ | 23 |
-| Vision Transformer | $I_{\mathrm{sam}}$ | 22 |
-| Vision Transformer | $I_{\mathrm{box}}$ | 30 |
-| ResNet-50 | $I_{\mathrm{sam}}$ | 27 |
-| ResNet-50 | $I_{\mathrm{box}}$ | 33 |
+| Convolutional trunk | $I_{\mathrm{sam}}$ | 【待补】 |
+| Convolutional trunk | $I_{\mathrm{box}}$ | 【待补】 |
+| Vision Transformer | $I_{\mathrm{sam}}$ | 【待补】 |
+| Vision Transformer | $I_{\mathrm{box}}$ | 【待补】 |
+| ResNet-50 | $I_{\mathrm{sam}}$ | 【待补】 |
+| ResNet-50 | $I_{\mathrm{box}}$ | 【待补】 |
 
-*Table 3. Wall-clock training time per cell on one RTX 4090 (48 GB), in the cell order used
-throughout this paper and in Table 4. The values are end-to-end training times as recorded,
-supplied by the authors. Within each backbone pair the box arm took longer than the mask-purified
-arm.*
+*Table 4. Wall-clock training time per cell on one RTX 4090 (48 GB), in the cell order used
+throughout this paper and in Table 5. Times are pending the identity-disjoint run described in
+Section 3.2.1; they will be recorded from that run and will come from the same run whose retrieval
+metrics populate Table 5, so that cost and accuracy describe one set of experiments rather than
+two.*
 
-<!-- Provenance: six values supplied by the author as wall-clock minutes per cell, in the paper's
-     cell order: 20, 23, 22, 30, 27, 33. Sum = 155 min = 2.58 h for all six cells.
-     The SUM IS DERIVED ARITHMETIC and is stated as such in the text; no per-epoch time and no
-     GPU-hour figure is derived, because the epoch budget is unresolved (see Table 2 note).
-     Do not back-compute epochs = 1000 or 30 from these times. -->
+<!-- TIMES PENDING. The six cells must be trained on the identity-disjoint partition (3.2.1)
+     before these values exist; the reference code does not yet implement that partition, so no
+     run can currently produce a valid figure. Record wall-clock minutes per cell from the
+     completed run, in the cell order above, and do not transcribe figures from any earlier run:
+     a preliminary six-cell run was performed under the old within-identity split and has been
+     discarded as invalid (paper/evidence-audit.md section 8.1). Its timings, cost and metrics are
+     not reproduced anywhere in this manuscript. -->
 
-Across the six cells this is 155 minutes of wall-clock training, that is 2.58 hours in total.
-<!-- Derived: 20+23+22+30+27+33 = 155 min; 155/60 = 2.583 h. Labelled as a sum of the values in
-     Table 3, nothing further inferred. No per-epoch time is derived: that would require the epoch
-     budget, which is unresolved (Table 2). -->
-
-【待补: 上述六个训练时长是否即产出 Table 4 结果的那批运行，须由作者确认；
-      若计时来自单独的一次运行，须说明，以免读者把时长与结果对应起来】
-
-The compute used for this study cost 980 CNY.
-<!-- Author-supplied total. Deliberately no breakdown: the author's statement does not say whether
-     it covers GPU rental, electricity, storage or platform overhead, so none is asserted here.
-     If the author later supplies a breakdown, add it; do not infer one from the wall-clock total
-     and an assumed hourly rate. -->
+The compute cost of this study will be reported once the identity-disjoint run has completed.
+<!-- COST PENDING. A total in CNY is to be supplied for the reported run. Do not carry over any
+     figure from the discarded preliminary run, and do not derive a cost from these timings and an
+     assumed rate. -->
 
 The six cells are produced by a single orchestrating script rather than by hand, so that the
 shared settings cannot drift between cells. `scripts/run_all_cells.sh` accepts a data root, a seed
@@ -763,7 +829,7 @@ so that the mask contrast cannot be zero by construction through a pointing erro
      10 runner/aggregate tests pass on CPU.
      See paper/evidence-audit.md sections 8 and 11. -->
 
-Because the aggregation cannot emit a placeholder, Table 4 is left entirely empty in this draft.
+Because the aggregation cannot emit a placeholder, Table 5 is left entirely empty in this draft.
 The six cells will be filled only from a completed run of this script, with at least three seeds,
 and the table will then carry the mean and dispersion across seeds rather than a single value.
 
@@ -786,9 +852,9 @@ The gallery and query splits are frozen before any model is trained, and the two
 them exactly, so the comparison between arms is not confounded by a change in the evaluation set.
 The number of gallery and query images is reported with the results.
 
-<!-- src/evaluate.py:154-159, and src/data.py:18 which defines the three splits. Note that the
-     repository defines no validation split; any hyperparameter chosen on gallery or query data
-     must be disclosed as such. -->
+<!-- src/evaluate.py ranks the test gallery against the test queries. src/data.py defines
+     train, val, gallery and query. The default identity-disjoint split puts gallery and query
+     on the test animals only; checkpoint selection uses val. -->
 
 Cost is measured on the inference embedding function only, at the common input resolution of
 224 × 224, with single-image forward passes. Parameters are counted as trainable parameters of the
@@ -808,7 +874,7 @@ backbone was being measured.
 
 【待补: 推理延迟——单张图像、批大小 1 的实测值，在 NVIDIA GeForce RTX 4090 上、
       热身若干次后取中位数；须写明热身次数与计时次数】
-<!-- Latency hardware: Table 2 states the training GPU as one RTX 4090 (48 GB). Unless the
+<!-- Latency hardware: Table 3 states the training GPU as one RTX 4090 (48 GB). Unless the
      author says latency was timed on a different device, that is the machine above. If it was
      measured elsewhere, replace the model name. -->
 
@@ -840,7 +906,7 @@ one unit, so that a requested removal cannot silently round to nothing. On a 3-h
 $\rho = 0.25$ this removes one head per block, which is 12 of 36 heads over 12 blocks; on a
 768-channel feed-forward block it removes 192 channels, or 2,304 of 9,216 over the network. Units
 are physically removed rather than masked: the affected tensors are rebuilt without the dropped
-rows and columns, so the parameter count and the multiply–accumulate count both fall, as Table 5
+rows and columns, so the parameter count and the multiply–accumulate count both fall, as Table 6
 reports. A request for pruning that would remove nothing raises rather than training an unpruned
 network under a pruned name, and the realised pruning is recorded in the run metadata and the
 evaluation output so that a reported cell can be matched to the architecture that produced it.
@@ -865,13 +931,14 @@ evaluation output so that a reported cell can be matched to the architecture tha
 
 ### 4.1 Retrieval performance of the six cells
 
-Table 4 reports rank-1 and rank-5 for every combination of crop policy and backbone. The cells in
-a row share a backbone and differ only in the crop; the cells in a column share a crop and differ
-only in the network. Every figure is measured on the held-out test identities, which were seen
-neither in training nor in validation. Training time and backbone cost are reported separately —
-wall-clock training time per cell in Table 3 and the inference cost of each backbone in Table 5 —
-because a cell's training time is a property of the run rather than a retrieval result, and mixing
-the two in one table would obscure which entries are measurements of recognition performance.
+Table 5 will report rank-1 and rank-5 for every combination of crop policy and backbone. The cells
+in a row share a backbone and differ only in the crop; the cells in a column share a crop and
+differ only in the network. Every figure will be measured on the held-out test identities, which
+are seen neither in training nor in validation. Training time and backbone cost are reported
+separately — wall-clock training time per cell in Table 4 and the inference cost of each backbone in
+Table 6 — because a cell's training time is a property of the run rather than a retrieval result,
+and mixing the two in one table would obscure which entries are measurements of recognition
+performance.
 
 | Backbone | Crop | Rank-1 | Rank-5 | $\Delta_{\mathrm{SAM}}$ (rank-1) |
 | --- | --- | ---: | ---: | ---: |
@@ -882,15 +949,15 @@ the two in one table would obscure which entries are measurements of recognition
 | ResNet-50 | $I_{\mathrm{sam}}$ | 【待补】 | 【待补】 | — |
 | ResNet-50 | $I_{\mathrm{box}}$ | 【待补】 | 【待补】 | 【待补】 |
 
-*Table 4. Retrieval accuracy on the held-out test identities of the identity-disjoint partition
-(Table 1). No animal scored here appears in the training or validation sets.
+*Table 5. Retrieval accuracy on the held-out test identities of the identity-disjoint partition
+(Table 2). No animal scored here appears in the training or validation sets.
 $I_{\mathrm{sam}}$ = mask-purified dorsal coat; $I_{\mathrm{box}}$ = detector box crop.
 $\Delta_{\mathrm{SAM}}$ is rank-1 on the purified arm minus rank-1 on the box arm, computed per
 backbone. Each figure is to be read from the aggregated summary written by
 `scripts/run_all_cells.sh` (`summary_six_cells.md` in the timestamped run directory), which draws
 only on the per-cell `metrics.json` files produced by that run.*
 
-<!-- PROVENANCE. No value in Table 4 exists yet, and none may be written until
+<!-- PROVENANCE. No value in Table 5 exists yet, and none may be written until
      scripts/run_all_cells.sh has completed. The placeholder tables previously in
      results/metrics.json and results/accuracy_curves.json are hard-coded constants generated by
      src/metrics.py and src/results.py, whose own docstrings call them placeholders, and whose
@@ -899,7 +966,7 @@ only on the per-cell `metrics.json` files produced by that run.*
      precisely so that they cannot re-enter through the back door.
      See paper/evidence-audit.md sections 1 and 8. -->
 
-【待补: 每个单元格的 gallery/query 图像数与被评身份数（须与 Table 1 的数据统计一致）】
+【待补: 每个单元格的 gallery/query 图像数与被评身份数（须与 Table 2 的数据统计一致）】
 
 【待补: 重复实验统计——至少 3 个随机种子的均值与标准差；若仅单次运行，须明确说明，
       并说明为何单次运行足以支撑结论】
@@ -931,7 +998,7 @@ require a third factor.
 
 ### 4.3 Computational cost
 
-Table 5 gives the cost of each backbone at the common input resolution. These figures are
+Table 6 gives the cost of each backbone at the common input resolution. These figures are
 properties of the committed architecture definitions, obtained by instantiating each model from
 the reference implementation and calling its own counting routines, so they do not depend on any
 training run.
@@ -943,7 +1010,7 @@ training run.
 | Vision Transformer, pruned (ρ = 0.25) | structured, physical removal | 4,144,064 | 784,269,312 | 3.24× |
 | ResNet-50 | none | 24,557,120 | 4,088,184,832 | 16.87× |
 
-*Table 5. Cost of the inference embedding network at 224 × 224, embedding dimension 512,
+*Table 6. Cost of the inference embedding network at 224 × 224, embedding dimension 512,
 classification head excluded. Parameters and MACs measured by `count_parameters` and
 `estimate_flops` in `src/models.py` with `configs/experiment.yaml`; the relative column is the
 ratio to the convolutional trunk. These are MACs, not FLOPs. The pruned row is the ViT at
@@ -951,7 +1018,7 @@ ratio to the convolutional trunk. These are MACs, not FLOPs. The pruned row is t
 now uses; the unpruned row is retained because it is the like-for-like baseline for the pruning
 comparison.*
 
-<!-- Traceability for Table 5 — all four rows reproduced independently by instantiating each
+<!-- Traceability for Table 6 — all four rows reproduced independently by instantiating each
      model and calling the repository's count_parameters / estimate_flops at 224x224:
        yolo_arcface            params 1,832,224   MACs 242,311,168
        vit unpruned (ratio 0)  params 5,623,232   MACs 1,074,757,632
@@ -983,8 +1050,9 @@ running them on an aircraft.
 
 ### 4.4 Training behaviour
 
-Rank-1 and rank-5 are logged at the configured evaluation interval, which gives a coarse view of
-whether a cell has converged within the epoch budget or is still improving when training stops.
+Rank-1 and rank-5 are logged every 200 epochs, giving five evaluation points within the 1000-epoch
+budget used for the reported runs, which is a coarse view of whether a cell has converged or is
+still improving when training stops.
 
 【待补: 六个单元格的 Rank-1/Rank-5 随轮次变化曲线（数据来源 outputs/<cell>/rank_callback.json），
       以及是否出现未收敛的单元格】
@@ -993,8 +1061,8 @@ whether a cell has converged within the epoch budget or is still improving when 
      200/400/600/800/1000 (paper/evidence-audit.md §8, §1). -->
 
 A convergence diagnostic matters for the interpretation of Section 4.2: if one backbone is still
-improving when another has plateaued, the between-backbone comparison at a fixed epoch budget
-understates the former, and the honest reading is that the budget, not the
+improving while another has plateaued, the between-backbone comparison at the fixed 1000-epoch
+budget understates the former, and the honest reading is that the budget, not the
 architecture, is binding. The same caveat applies to the crop contrast, since the purified arm has
 fewer informative pixels and may converge on a different trajectory.
 
@@ -1057,7 +1125,7 @@ because a large network may be able to learn to ignore the background that a sma
 
 ### 5.3 What the cost figures imply for deployment
 
-The rows of Table 5 span a factor of nearly seventeen in multiply–accumulates, from the
+The rows of Table 6 span a factor of nearly seventeen in multiply–accumulates, from the
 convolutional trunk to ResNet-50. On a UAV, that factor translates into flight endurance, into the
 thermal envelope of the payload enclosure, and into whether inference can be done on board at frame
 rate or must be deferred to a ground station after landing. A deferred pipeline is not necessarily
@@ -1076,7 +1144,7 @@ aircraft. Whether the retained accuracy at the pruned operating point justifies 
 cost is an empirical question this draft does not answer, and we do not treat the compression as
 free: a pruned model that loses accuracy has not saved anything an operator cares about.
 
-The practical reading of Table 5 is therefore conditional on the intended workflow. For a
+The practical reading of Table 6 is therefore conditional on the intended workflow. For a
 post-flight batch pipeline, the ResNet-50 row is affordable and the question is purely whether
 its accuracy justifies its cost. For on-board inference at a few frames per second on an embedded
 accelerator, the convolutional trunk is the row that fits comfortably, followed by the pruned
@@ -1112,34 +1180,32 @@ deployments, but a reader should not interpret a rank-5 figure as if it were a r
 Several limitations bound what can be concluded, and they are stated here rather than left for a
 reader to infer.
 
-*Scale and breed.* The study uses 96 Simmental beef cattle from a single herd, imaged at one site.
-Ninety-six identities is a small enrolment by the standards of person re-identification, and rank-1
-on a 96-way problem is not directly comparable to rank-1 on a 1000-way problem. Simmental cattle
-are a high-contrast, patterned breed, which is favourable for coat-based identification; breeds with
-low-contrast or seasonally changing coats present a harder problem that this archive cannot address,
-and we do not assume that a figure obtained here transfers to them. The sex and age composition of
-the herd
-【待补: 性别与月龄范围、体重区间——须由牧场记录或数据文章提供】 also bounds the population to
-which these results apply.
+*Scale and breed.* The study uses 96 Simmental beef cattle — all male, per the companion archive
+record — from a single herd imaged at one site, with a mean live weight of 225.4 kg and a standard
+deviation of 20.1 kg at the weighing campaigns (Wang et al., 2025b). Ninety-six identities is a
+small enrolment by the standards of person re-identification, and rank-1 on a 96-way problem is not
+directly comparable to rank-1 on a 1000-way problem. Simmental cattle are a high-contrast, patterned
+breed, which is favourable for coat-based identification; breeds with low-contrast or seasonally
+changing coats present a harder problem that this archive cannot address, and we do not assume that
+a figure obtained here transfers to them. The animals are young beef cattle of a single sex, so the
+results describe that population rather than a mixed-age breeding herd; **age at capture is not
+stated in any of the three source publications**, so we cannot bound the age range and do not
+estimate it.
 
 *Single site.* All imagery comes from one farm. The transfer question raised in Section 5.2 — does
 the model survive a change of premises — is not answered by a single-site experiment, and the
 $\Delta_{\mathrm{SAM}}$ result should be read as evidence about mechanism rather than as a
 guarantee of transfer.
 
-*Model selection on the evaluation split.* The retained checkpoint is the one with the best
-observed rank-1 on the gallery/query splits, as described in Section 3.6. The reported figures are
-therefore mildly optimistic in absolute terms. The bias is applied identically to all six cells and
-so should not affect the ordering, but a fully clean protocol would carve a validation split for
-this purpose. The reference implementation defines no validation split, which is a shortcoming of
-the protocol as implemented.
+*Model selection.* The retained checkpoint is the one with the best observed rank-1 on the
+validation animals, as described in Section 3.6. The test identities are not used for that choice.
+The legacy within-identity split has no validation partition and falls back to selecting on the
+gallery and query; that split is not the reported protocol.
 
-*Epoch budget.* A fixed epoch budget with no learning-rate schedule was chosen to keep the
-comparison symmetric. If some cells have not converged, the budget rather than the architecture is
-binding, and the between-backbone comparison is correspondingly weakened. Reporting the training
-curves (Section 4.4) is the mitigation, not a solution.
-【待补: 确认最终采用的轮次；仓库配置在合并后由 epochs:30 改为 epochs:1000，
-      本稿不预设其一（另见 Table 2 注）】
+*Epoch budget.* A fixed 1000-epoch budget with a constant learning rate and no schedule was chosen
+to keep the comparison symmetric. If some cells have not converged at that budget, the budget
+rather than the architecture is binding, and the between-backbone comparison is correspondingly
+weakened. Reporting the training curves (Section 4.4) is the mitigation, not a solution.
 
 *Segmentation dependence.* The purified arm inherits the failure modes of the segmenter. A mask
 that clips the shoulder, or that leaks into an adjacent animal, changes what the recogniser sees in
@@ -1151,12 +1217,12 @@ the results how often the purified crop was faithful to the dorsal coat. Measuri
 area distribution and the rejection rate is straightforward from the mask cache and is the most
 obvious single improvement to the protocol.
 
-*Pruning criterion.* The compression reported in Table 5 uses weight magnitude, which is a proxy
+*Pruning criterion.* The compression reported in Table 6 uses weight magnitude, which is a proxy
 for importance rather than a measure of it. A unit can carry little weight and still be the one
 that separates two similarly patterned animals, and magnitude ranking has no way to notice. The
 embedding-geometry criterion sketched in Section 3.8 would address that directly, but it requires a
 calibration pass and one forward pass per candidate unit, and it is not implemented here. The cost
-figures in Table 5 should therefore be read as an upper bound on what careful selection could
+figures in Table 6 should therefore be read as an upper bound on what careful selection could
 achieve at the same removal rate, not as evidence that magnitude selection is near-optimal.
 
 *No open-set evaluation.* All probes are enrolled animals. A system deployed on a farm will
