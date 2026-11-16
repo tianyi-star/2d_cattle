@@ -343,8 +343,29 @@ query subsets, and the partition is frozen before any model is fitted.
 【待补: 标注流程细节——标注人员数量与培训、身份核对方式（是否与耳标/牧场记录交叉验证）、
 疑难样本（遮挡、多牛同框、部分出画）的处理规则、标注一致性检查结果】
 
-【待补: 每个身份的 train/gallery/query 图像数量统计（均值、中位数、最小、最大），
-以及被排除的身份数量与排除原因】
+Table 1 accounts for the images and identities that enter each split. Both crop arms draw on the
+same accounting, so the table has one version rather than one per arm.
+
+| Quantity | Value |
+| --- | ---: |
+| Identities in the archive | 96 |
+| Identities retained for evaluation | 【待补】 |
+| Images in the training split | 【待补】 |
+| Images in the gallery split | 【待补】 |
+| Images in the query split | 【待补】 |
+| Images per identity: mean / median / min / max | 【待补】 |
+| Identities excluded, with reason | 【待补】 |
+
+*Table 1. Data accounting for the frozen split. Identities are counted once; a query image and a
+gallery image of the same animal are never two views exported from the same detection. The
+retained-identity count may be below 96 if an animal lacks a qualified training image or a query
+image, and any such exclusion must be reported here rather than silently absorbed.*
+
+<!-- The 96 figure is a property of the source archive (verified against Zenodo record
+     13364663 and its companion 13361729, which states "96 Simmental male beef cattle");
+     it is not a count made by this repository. Every other cell in Table 2 is unknown
+     because data/ was never committed and no run manifest exists. See
+     paper/evidence-audit.md section 6. -->
 
 Because the study involves only overhead observation of animals in their normal environment, with
 no handling, restraint or intervention, the ethical position should be stated explicitly rather
@@ -457,7 +478,7 @@ so that no cell can be tuned independently of the others.
 | Random seed | 0 | `configs/experiment.yaml` |
 | Rank callback interval | every 5 epochs | `configs/experiment.yaml` |
 
-*Table 1. Shared training configuration. Every value is read from one file and is identical for
+*Table 2. Shared training configuration. Every value is read from one file and is identical for
 all six cells; the table is a description of the protocol, not of an outcome.*
 
 Augmentation is deliberately minimal, because aggressive augmentation would interact with the crop
