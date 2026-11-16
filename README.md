@@ -9,7 +9,7 @@ ORCID: [0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · GitHub: [
 
 ## Abstract
 
-Mutong provides a controlled comparison of individual cattle re-identification from unmanned aerial vehicle (UAV) imagery of the dorsal coat pattern. Three embedding backbones—YOLO-ReID, a task-pruned Vision Transformer, and the coat-pattern metric-learning architecture of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a YOLO bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Rank-1 and Rank-5 retrieval accuracy, together with parameter count and floating-point operations (FLOPs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); measured recognition figures are produced by local training runs and are not embedded in this document.
+Mutong provides a controlled comparison of individual cattle re-identification from unmanned aerial vehicle (UAV) imagery of the dorsal coat pattern. Three embedding backbones—YOLO-ReID, a task-pruned Vision Transformer, and the coat-pattern metric-learning architecture of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a YOLO bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Rank-1 and Rank-5 retrieval accuracy, together with parameter count and multiply-accumulates (MACs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); measured recognition figures are produced by local training runs and are not embedded in this document.
 
 ## Method overview
 
@@ -20,23 +20,23 @@ flowchart TD
     B --> N[YOLO box crop without SAM]
     C --> D[Purified coat-pattern image I_sam]
     N --> P[Box crop with residual background I_box]
-    D --> E[F-ODS support selection]
-    P --> Q[F-ODS support selection]
-    E --> F[Fixed train / gallery / query split]
-    Q --> R[Same identity split as left arm]
-    F --> G[YOLO-ReID]
+    D --> E[Seeded train / gallery / query split]
+    P --> Q[Same identity split as left arm]
+    E --> F[One manifest per seed]
+    Q --> R[Same manifest rows]
+    F --> G[Convolutional trunk]
     F --> H[Pruned ViT]
-    F --> I[Wang et al. baseline]
-    R --> G2[YOLO-ReID]
+    F --> I[ResNet trunk]
+    R --> G2[Convolutional trunk]
     R --> H2[Pruned ViT]
-    R --> I2[Wang et al. baseline]
+    R --> I2[ResNet trunk]
 
     subgraph EVAL["Evaluation"]
         direction TB
         J["Cosine retrieval on I_sam → Rank-1 / Rank-5"]
         K["Cosine retrieval on I_box → Rank-1 / Rank-5"]
         L["Δ_SAM = Rank-1(I_sam) − Rank-1(I_box)"]
-        M["Params / FLOPs once per backbone at shared resolution"]
+        M["Params / MACs once per backbone at shared resolution"]
         J --> L
         K --> L
         L --- M
@@ -46,7 +46,7 @@ flowchart TD
     G2 & H2 & I2 --> K
 ```
 
-Detection precedes the fork. For every UAV frame, a YOLO detector returns an axis-aligned cattle box that is shared by both experimental arms; the arms therefore differ in the retained pixels, not in the animal list. In the SAM arm, that box prompts a Segment Anything Model (SAM) mask of the dorsal coat, and the recogniser receives only the masked crop $I_{\mathrm{sam}}$. Pasture, hard shadow, and limbs that fall outside the mask are excluded. In the control arm, the same box crops the original frame to $I_{\mathrm{box}}$ and SAM is not applied, so background clutter may remain. Farm-aware optimal dataset selection (F-ODS) rebalances the training pool of each arm on its own crop manifest, while the few-shot assignment of identities to `train`, `gallery`, and `query` is held identical across all six cells. At test time, each query embedding is ranked against gallery embeddings by cosine similarity of $\ell_2$-normalised vectors; Rank- $k$ is the fraction of queries whose true identity appears among the $k$ nearest gallery identities. Parameter count and FLOPs are reported once per backbone at the common input resolution and exclude the ArcFace class-weight matrix, whose width scales with the number of training identities rather than with the crop operator.
+Detection precedes the fork. For every UAV frame, a YOLO detector returns an axis-aligned cattle box that is shared by both experimental arms; the arms therefore differ in the retained pixels, not in the animal list. In the SAM arm, that box prompts a Segment Anything Model (SAM) mask of the dorsal coat, and the recogniser receives only the masked crop $I_{\mathrm{sam}}$. Pasture, hard shadow, and limbs that fall outside the mask are excluded. In the control arm, the same box crops the original frame to $I_{\mathrm{box}}$ and SAM is not applied, so background clutter may remain. The seeded assignment of identities to `train`, `gallery`, and `query` is held identical across all six cells. At test time, each query embedding is ranked against gallery embeddings by cosine similarity of $\ell_2$-normalised vectors; Rank- $k$ is the fraction of queries whose true identity appears among the $k$ nearest gallery identities. Parameter count and multiply-accumulates (MACs) are reported once per backbone at the common input resolution and exclude the ArcFace class-weight matrix, whose width scales with the number of training identities rather than with the crop operator.
 
 The primary ablation question is:
 
@@ -310,7 +310,7 @@ sh scripts/train.sh pruned_vit_arcface bbox
 sh scripts/train.sh wang_metric bbox
 ```
 
-3. Evaluate the corresponding cell. Reported fields are Rank-1, Rank-5, parameters, and FLOPs. The SAM gain for a backbone is Rank-1 on the `sam` cell minus Rank-1 on the `bbox` cell.
+3. Evaluate the corresponding cell. Reported fields are Rank-1, Rank-5, parameters, and multiply-accumulates (MACs; `estimate_flops` returns MACs, not FLOPs). The SAM gain for a backbone is Rank-1 on the `sam` cell minus Rank-1 on the `bbox` cell.
 
 ```bash
 sh scripts/evaluate.sh yolo_arcface sam
