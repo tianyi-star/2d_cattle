@@ -213,7 +213,7 @@ historical note survives as a comment above `_magnitude_scores` in `src/models.p
 trains all six cells on it. `src/make_synthetic.py:24-39` renders each "identity" as a
 randomly coloured ellipse with random dots on a black field; the "pasture clutter" is a
 sinusoidal gradient plus Gaussian noise (`src/make_synthetic.py:44-57`). These are not cattle,
-not UAV imagery, and not the Zenodo archive. That script is now labelled a synthetic smoke test.
+not UAV imagery, and not the private UAV collection. That script is now labelled a synthetic smoke test.
 
 The measured path is `scripts/run_all_cells.sh` + `src/aggregate.py`, added in
 `fix/sam-and-pruning`. It trains the 2 × 3 cells with seeded splits into an exclusively created,
@@ -225,24 +225,33 @@ aggregation path can synthesise a figure. In prepared-data mode the two crop tre
 different directories, so $\Delta_{\mathrm{SAM}}$ cannot be zero by a pointing error. 10
 runner/aggregate tests pass on CPU.
 
-**No run of that script has been executed on the archive.** The machinery exists; the measurement
-does not.
+**No run of that script has been executed on the real collection.** The machinery exists; the
+measurement does not.
 
 `README.md:213` is explicit: the generator exists "solely to verify the pipeline in the absence
-of the archive; its outputs are not scientific results."
+of the real collection; its outputs are not scientific results."
 
 **No experiment on real cattle imagery has been run in this repository.**
 
-## 6. Dataset: declared but not present
+## 6. Dataset: provenance corrected, contents still unverified
+
+**Correction (supersedes the original finding).** This section previously recorded the Zenodo
+record `10.5281/zenodo.13364663` as the source of the imagery. That was wrong. The author has since
+stated that the data analysed in this work is a private UAV RGB collection held at
+`/home/iadi/UAV-basedData/RGB-data/individaulsByIds` on a GPU server, organised as one folder per
+identity, folders named `101`–`328` non-contiguously, 96 cattle identities. It is **not** the
+Zenodo release and must not be described as publicly deposited anywhere in the paper.
 
 | Item | Evidence | Status |
 | --- | --- | --- |
-| Source archive | `README.md:100-115`: Zenodo `10.5281/zenodo.13364663`, "Dataset for cattle growth monitoring in PLF using UAV-based LiDAR", Wang, 2024, CC BY 4.0 | Metadata verified against the Zenodo API: title, depositor (Wang, Yaowu), publication date 2024-08-23, licence `cc-by-4.0`, single file `dataShare.zip`, 26,486,342,645 bytes. **All of this is verifiable and safe to cite.** |
-| Animal count | `README.md:103`: "imagery associated with 96 Simmental beef cattle"; `results/metrics.json` `num_identities: 96` | The 96-identity figure is corroborated by the companion Zenodo record `10.5281/zenodo.13361729` ("96 Simmental male beef cattle in the datasets UAV-RGB and Ground-RGB"). Citable as a dataset property, **not** as something this repo measured. |
-| Images actually used | none | `data/` absent and gitignored. No manifest, no identity table, no per-identity image counts, no train/gallery/query sizes exist. |
-| Split sizes | none | `src/data.py:83-130` implements a 0.6/0.2/0.2 per-identity split, but no executed split is recorded anywhere. `num_gallery`/`num_query` appear only as runtime output. |
-| Annotation protocol | none | No annotation guidelines, no identity-labelling procedure, no inter-annotator check, no detection-box ground truth. |
-| Acquisition parameters | none | No flight altitude, sensor, GSD, frame rate, date, farm, pen layout, or lighting conditions. The README says the repo "neither redistributes the archive nor asserts a fixed internal folder layout". |
+| Source | Author statement: private UAV RGB collection on the GPU server, one identity folder per animal, non-contiguous identifiers `101`–`328`, 96 identities | **Taken on the author's word.** The path was not reachable from the environment where this audit was prepared (`/home/iadi` does not exist on the drafting VM), so nothing about the contents has been independently verified. |
+| Identity count | 96, per author | Citable as a collection property. Not a count performed by this repository. |
+| Relationship to Wang et al. (2024/2025) | Wang's release (`10.5281/zenodo.13364663`, 96 Simmental, paired airborne + ground RGB/LiDAR) remains a genuine prior work and is cited as related work | **Both have 96 identities.** The coincidence is a trap: a reader may assume this study reuses that release. §3.2 now states the distinction explicitly. |
+| Images actually used | none available | `data/` absent and gitignored. No manifest, no per-identity image counts, no split sizes exist in the repository. |
+| Split construction | `src/data.py` `build_split_rows()`; `src/aggregate.py` `build_seed_manifest()` | **See §13 — this is the most serious open defect.** The code splits images *within* each identity; it does not hold identities out. |
+| Annotation protocol | none | No guidelines, no identity-verification procedure, no inter-annotator check, no detection ground truth. |
+| Acquisition parameters | none | No altitude, GSD, sensor, date, site, pen layout or lighting range. All `【待补】` in §3.2 of the manuscript. |
+| Breed / coat description | none | Previously asserted "Simmental"; that came from the Zenodo record and no longer applies. Now `【待补】`. |
 
 ## 7. What I independently measured (reproducible, and legitimately reportable)
 
@@ -290,7 +299,38 @@ and wrote `metrics.json` with `parameters: 1635232`, `flops: 242114560.0`,
 `num_gallery: 6`, `num_query: 6`, `rank1: 0.0`. The plumbing works; the *science* has not been
 done. (Rank-1 = 0.0 is expected: 6 identities, 3 epochs, random init, ellipses.)
 
-## 8. Settings that are documented and can be reported as *design*, not as outcome
+## 8. Identity-disjoint splitting: specified in the paper, not implemented in the code
+
+The manuscript now specifies, and argues for, a partition in which each of the 96 animals appears
+in exactly one of the training, validation and test sets. **The code does not do this.** It does the
+opposite, and the consequence is that every rank-1 number the current pipeline can produce is
+inflated.
+
+`src/data.py:84-129` (`build_split_rows`), which `src/aggregate.py:51` (`build_seed_manifest`)
+delegates to, iterates over identities and, for each one, shuffles *that identity's own images* and
+deals them into `train` / `gallery` / `query` at a 0.6 / 0.2 / 0.2 ratio. Its docstring says so
+plainly: *"Assign each image to train / gallery / query while keeping all identities."* Three
+consequences:
+
+1. **Identity leakage.** Every identity appears in all three splits. A model can reach high rank-1
+   by recognising animals it was trained on, which is not identification.
+2. **Near-duplicate leakage.** Consecutive UAV frames of one animal are nearly identical. Splitting
+   within an identity puts temporally adjacent frames on both sides of the train/test boundary, so
+   even the retrieval metric measures frame memorisation.
+3. **No validation split exists at all.** `SPLITS = ("train", "gallery", "query")`
+   (`src/data.py:18`); there is no `val`, no identity-holdout flag, and no code path that could
+   produce one.
+
+Note also that `gallery` is not a held-out class set: `src/evaluate.py:154-159` ranks each query
+against *individual gallery embeddings* with duplicate-identity suppression, so gallery images of a
+trained animal are simply more training-distribution views of it.
+
+**Required before any reported figure:** a partitioning routine that assigns identity ids to
+`train` / `val` / `test` disjointly, emits the three lists, and asserts that their intersection is
+empty. The manuscript's §3.2.1 specifies the protocol; the paper is currently ahead of the code on
+this point, and §3.2.1 says so in the text rather than leaving a reader to discover it.
+
+## 9. Settings that are documented and can be reported as *design*, not as outcome
 
 From `configs/experiment.yaml` (paper config):
 
@@ -315,7 +355,7 @@ Also absent: any validation split. `src/data.py:18` defines `SPLITS = ("train", 
 "query")` — no `val`. `paper/method.tex` builds its whole F-ODS argument on a validation split
 that does not exist in code.
 
-## 9. CEA format requirements vs. our evidence
+## 10. CEA format requirements vs. our evidence
 
 CEA (Elsevier, ISSN 0168-1699) guide-for-authors essentials, and the gap for each:
 
@@ -330,7 +370,7 @@ CEA (Elsevier, ISSN 0168-1699) guide-for-authors essentials, and the gap for eac
 | References in Elsevier author–date (Harvard) style, DOIs where available | Handled: every reference below was resolved through the Crossref API. |
 | Editors favour citations to CEA itself | Addressed: 15 of the 27 reference entries are CEA papers (§10), i.e. 15 of 28 DOIs in the file. |
 | Ethics / animal welfare statement (live animals) | **Missing.** No ethics approval number or welfare statement anywhere in the repo. |
-| Preprint/data availability | Partial: the dataset is public on Zenodo; the code is Apache-2.0. No measured artefacts to deposit. |
+| Preprint/data availability | Partial: the code is Apache-2.0; the imagery is private and offered on request. No measured artefacts to deposit. |
 
 **Bottom line for CEA:** the submission cannot yet be an empirical research article. It can
 honestly be a *methods-and-protocol* paper with an empty results table, which CEA does publish
@@ -355,7 +395,7 @@ it; "gap" means the repository or author must supply something.
 | 8 | CRediT author statement | **Drafted.** Single author, full role list; needs author confirmation. |
 | 9 | Declaration of competing interest | **Have.** Standard declaration. |
 | 10 | Acknowledgements, including funders | **Have.** Songshan Laboratory 241110210200 and Henan Major S&T 221100210600, per `README.md:340-342`; dataset depositor credited. |
-| 11 | Data availability statement | **Have, conservatively.** Points to the public Zenodo dataset and the Apache-2.0 code; deliberately does *not* promise trained weights, because none exist. |
+| 11 | Data availability statement | **Have, conservatively.** Offers the imagery from the corresponding author on request and points to the Apache-2.0 code; deliberately promises no public deposit, because there is none. Needs the author to confirm the offer is acceptable to the journal.0 code; deliberately does *not* promise trained weights, because none exist. |
 | 12 | Ethics / animal-welfare statement | **Gap.** Nothing in the repo; `【待补】` for the approval number. Non-invasive aerial observation is the argument, but it needs the author's institutional confirmation. |
 | 13 | Elsevier author–date (Harvard) references with DOIs | **Have.** 27 entries, all resolved via Crossref/Zenodo; one `【需核对】` on the ViT/ICLR entry, where no DOI exists. |
 | 14 | Cite the target journal where relevant | **Have.** 15 of 27 entries are CEA papers, spanning cattle re-ID (Andrew 2021; Wang 2025; Chen 2026; Pathak & Prakash 2025), UAV livestock imaging (Wang 2023; Yan 2026), tracking (Han 2023; Liu 2024; Zhao 2026) and reviews (Rohan 2024; Rahman 2025). |
@@ -364,7 +404,7 @@ it; "gap" means the repository or author must supply something.
 The only gap that cannot be closed by editing is #6. Everything else is present or explicitly
 marked.
 
-## 10. Claim-by-claim traceability
+## 11. Claim-by-claim traceability
 
 ### 10.1 Claims that ARE supported
 
@@ -388,8 +428,8 @@ marked.
 | Training uses Adam, lr 1e-4, wd 1e-4, 30 epochs, batch 8, 224² | `configs/experiment.yaml`; `src/train.py` |
 | Augmentation = flip + colour jitter + ImageNet norm | `src/data.py:132-150` |
 | The six cells are the 3×2 product of backbone and crop | `src/protocol.py:84-87` |
-| Dataset identity: Zenodo 10.5281/zenodo.13364663, Wang 2024, CC BY 4.0, 96 Simmental | Zenodo API (§6); `README.md` |
-| Companion code/records: Zenodo 10.5281/zenodo.13361729 | Zenodo API (§6), cited in `README.md` |
+| Dataset identity: private UAV RGB collection, 96 cattle identities, one folder per animal | Author statement (§6); **not** publicly deposited |
+| Wang et al. (2024/2025) remain related work, not the data source | Crossref/Zenodo metadata verified; §3.2 states the distinction |
 | Software licence Apache-2.0 | `LICENSE`; `CITATION.cff` |
 | Funding: Songshan Laboratory 241110210200; Henan Major S&T 221100210600 | `README.md` |
 
@@ -418,24 +458,30 @@ marked.
 | Annotation protocol, inter-annotator agreement | Absent |
 | FLOPs (as opposed to MACs) | `estimate_flops` returns MACs (§7) |
 
-## 11. Gap list for the manuscript
+## 12. Gap list for the manuscript
 
 Ordered by how much they block a CEA submission.
 
-1. **Real-data runs.** All six cells on the Zenodo archive with `configs/experiment.yaml`. Without this there is no paper.
-2. ~~**A working SAM stage.**~~ **Fixed in `fix/sam-and-pruning`.** `src/sam_mask.py` prompts SAM with the detector box (`vit_b` by default, `vit_t` via MobileSAM, or ultralytics), applies `Crop(I ⊙ M, B_M)`, loads the segmenter lazily, caches masks on disk keyed by image id + detection box, and **raises** when weights are missing rather than falling back to the box crop. `src/preprocess.py --crop sam` calls it; `--crop bbox` is unchanged. Verified with real `sam_vit_b_01ec64.pth` on CPU (mask excludes pasture, shadow and legs; cached second call ~1 ms). Still outstanding: the actual Δ_SAM **measurement** on the archive — the code can now produce both arms, but no run has been done.
-3. ~~**A working pruning operator.**~~ **Fixed in `fix/sam-and-pruning`.** `int(heads*ratio)` replaced by half-up rounding with a floor of one unit (3 heads → 1 dropped at 0.25); MLP rows are written with `index_put_` / advanced assignment on the parameter, not on a copy; units are physically removed so `count_parameters` falls (5,623,232 → 4,144,064 at ratio 0.25) and MACs fall too. **The criterion is weight magnitude, not the discriminability ratio** — that discrepancy has since been resolved in the text of `paper/method.tex` and `paper/manuscript-cea.md` §3.8, both of which now describe magnitude ranking as implemented (§4.2).
-4. **Data acquisition and annotation section.** Site, dates, sensor, altitude, GSD, number of flights, identity labelling, train/gallery/query counts per identity.
-5. **Validation split** if the F-ODS narrative is kept; otherwise remove F-ODS from the paper to match the code.
-6. **Repeated runs** (≥3 seeds) with mean ± SD, or an explicit statement that results are single-run. *Partly addressed:* `scripts/run_all_cells.sh --seeds "0 1 2"` produces per-seed manifests and run directories and records the seed list in `run_config.txt`, so the mechanism exists; the runs themselves have not been done.
-7. **Latency measurement** on named hardware, median of N calls after warm-up.
-8. **Ethics statement** and animal-welfare declaration.
-9. **CRediT roles**, competing-interest declaration, author-approved acknowledgements.
-10. ~~**Fix the stale `src.simulate_results` reference.**~~ **Fixed in `fix/sam-and-pruning`.** The call is gone from `scripts/run_six_cells.sh`; that script is now labelled a synthetic smoke test and `scripts/run_all_cells.sh` is the measured runner.
-11. **Delete or clearly re-label `results/`**, whose current disclaimers were stripped (§1). Leaving them as-is invites the exact misrepresentation this audit exists to prevent. *Partly addressed:* `src/aggregate.py` now refuses to aggregate a placeholder-tagged or stale `metrics.json`, so the old constants cannot re-enter a reported table through the pipeline; the files themselves are still present.
-12. ~~**Correct or remove `paper/method.tex` §`sec:pruning`.**~~ **Fixed.** `paper/method.tex` was rewritten so that weight-magnitude ranking is described as the implemented criterion, matching `paper/manuscript-cea.md` §3.8. The discriminability-ratio criterion survives only under an explicit "design direction and was not evaluated" label, with the equations left in place for a follow-on study. The same pass marked F-ODS, quality-weighted loss and dynamic self-training as **not implemented** (§`sec:not-implemented`), corrected the "YOLO-ReID is not a YOLO" and "wang_metric is a random-init ResNet" naming, removed the few-shot/prototype and validation-split machinery that the code lacks, and changed FLOPs to multiply–accumulates. `README.md` and the comments in `src/models.py` were updated to match, as were the `MODEL_ROLES` display strings in `src/protocol.py`.
+1. **Identity-disjoint split must be implemented.** §8. The current manifest builder splits images
+   *within* each identity, so every identity appears in train, gallery and query; any rank-1 from it
+   is inflated by identity and near-duplicate leakage. This is now the first thing to fix, ahead of
+   the runs, because it determines whether the numbers mean anything. The manuscript specifies the
+   protocol (§3.2.1) and states in the text that the code does not yet implement it.
+2. **Real-data runs.** All six cells on the private UAV collection with `configs/experiment.yaml`,
+   using the identity-disjoint partition. Without this there is no paper.
+3. ~~**A working SAM stage.**~~ **Fixed in `fix/sam-and-pruning`.** `src/sam_mask.py` prompts SAM with the detector box (`vit_b` by default, `vit_t` via MobileSAM, or ultralytics), applies `Crop(I ⊙ M, B_M)`, loads the segmenter lazily, caches masks on disk keyed by image id + detection box, and **raises** when weights are missing rather than falling back to the box crop. `src/preprocess.py --crop sam` calls it; `--crop bbox` is unchanged. Verified with real `sam_vit_b_01ec64.pth` on CPU (mask excludes pasture, shadow and legs; cached second call ~1 ms). Still outstanding: the actual Δ_SAM **measurement** on the archive — the code can now produce both arms, but no run has been done.
+4. ~~**A working pruning operator.**~~ **Fixed in `fix/sam-and-pruning`.** `int(heads*ratio)` replaced by half-up rounding with a floor of one unit (3 heads → 1 dropped at 0.25); MLP rows are written with `index_put_` / advanced assignment on the parameter, not on a copy; units are physically removed so `count_parameters` falls (5,623,232 → 4,144,064 at ratio 0.25) and MACs fall too. **The criterion is weight magnitude, not the discriminability ratio** — that discrepancy has since been resolved in the text of `paper/method.tex` and `paper/manuscript-cea.md` §3.8, both of which now describe magnitude ranking as implemented (§4.2).
+5. **Data acquisition and annotation section.** Site, dates, sensor, altitude, GSD, number of flights, identity labelling, train/gallery/query counts per identity.
+6. **Validation split** if the F-ODS narrative is kept; otherwise remove F-ODS from the paper to match the code.
+7. **Repeated runs** (≥3 seeds) with mean ± SD, or an explicit statement that results are single-run. *Partly addressed:* `scripts/run_all_cells.sh --seeds "0 1 2"` produces per-seed manifests and run directories and records the seed list in `run_config.txt`, so the mechanism exists; the runs themselves have not been done.
+8. **Latency measurement** on named hardware, median of N calls after warm-up.
+9. **Ethics statement** and animal-welfare declaration.
+10. **CRediT roles**, competing-interest declaration, author-approved acknowledgements.
+11. ~~**Fix the stale `src.simulate_results` reference.**~~ **Fixed in `fix/sam-and-pruning`.** The call is gone from `scripts/run_six_cells.sh`; that script is now labelled a synthetic smoke test and `scripts/run_all_cells.sh` is the measured runner.
+12. **Delete or clearly re-label `results/`**, whose current disclaimers were stripped (§1). Leaving them as-is invites the exact misrepresentation this audit exists to prevent. *Partly addressed:* `src/aggregate.py` now refuses to aggregate a placeholder-tagged or stale `metrics.json`, so the old constants cannot re-enter a reported table through the pipeline; the files themselves are still present.
+13. ~~**Correct or remove `paper/method.tex` §`sec:pruning`.**~~ **Fixed.** `paper/method.tex` was rewritten so that weight-magnitude ranking is described as the implemented criterion, matching `paper/manuscript-cea.md` §3.8. The discriminability-ratio criterion survives only under an explicit "design direction and was not evaluated" label, with the equations left in place for a follow-on study. The same pass marked F-ODS, quality-weighted loss and dynamic self-training as **not implemented** (§`sec:not-implemented`), corrected the "YOLO-ReID is not a YOLO" and "wang_metric is a random-init ResNet" naming, removed the few-shot/prototype and validation-split machinery that the code lacks, and changed FLOPs to multiply–accumulates. `README.md` and the comments in `src/models.py` were updated to match, as were the `MODEL_ROLES` display strings in `src/protocol.py`.
 
-## 12. Reference verification
+## 13. Reference verification
 
 Every reference in the manuscript was resolved through the Crossref REST API or the Zenodo API
 during this audit; DOIs, volumes, pages and author lists were taken from those records, not from
