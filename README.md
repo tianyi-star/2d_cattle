@@ -191,15 +191,84 @@ Scripts read `configs/path.yaml` and the shared experiment file. Paths may be ov
 
 ### Six-cell run with Rank-1 / Rank-5 callback
 
-Training logs Rank-1 and Rank-5 after every `eval_every` epochs via `RankAccuracyCallback` (`src/callbacks.py`). Histories are written to `outputs/*/rank_callback.json`. To run all six cells on paired synthetic crops (or after pointing manifests at the private server):
+Training logs Rank-1 and Rank-5 after every `eval_every` epochs via `RankAccuracyCallback` (`src/callbacks.py`). Histories are written to `outputs/*/rank_callback.json`. To exercise all six cells on paired synthetic crops (a pipeline check only, never a result):
 
 ```bash
-sh scripts/run_six_cells.sh configs/experiment_cpu.yaml   # CPU smoke
-# sh scripts/run_six_cells.sh configs/experiment.yaml    # server default
-python3 -m src.simulate_results                           # labelled draft table
+sh scripts/run_six_cells.sh configs/experiment_cpu.yaml   # CPU smoke, synthetic images
 ```
 
-Measured summaries land in `outputs/summary_six_cells.json`. Simulated placeholders for table drafting land in `results/simulated_six_cells.json` (final retrieval accuracies), `results/simulated_rank_curves.json` (per-epoch Rank-1 / Rank-5 callback histories), and `results/simulated_metrics.json` (closed-set Accuracy, Recall@1, Recall@5, mAP); all are explicitly marked as non-measured. In this project *Accuracy* denotes closed-set classification, while *Recall@k* denotes re-ID retrieval (the same quantity reported elsewhere as Rank-$k$).
+For **measured** results use the seeded runner; see [Measured six-cell run](#measured-six-cell-run):
+
+```bash
+scripts/run_all_cells.sh --data-root /data/cattle --seeds "0 1 2"
+```
+
+In this project *Accuracy* denotes closed-set classification, while *Recall@k* denotes re-ID retrieval (the same quantity reported elsewhere as Rank-$k$).
+
+### SAM masking
+
+`src/preprocess.py --crop sam` prompts SAM with the detector box only and writes $I_{\mathrm{sam}}=\operatorname{Crop}(I\odot M, B_M)$: the coat pixels, cropped to the tight box of the mask. `--crop bbox` is unchanged — the plain rectangle of the original frame — and never loads SAM.
+
+```bash
+python3 -m src.preprocess \
+  --image-dir /data/uav_frames --manifest /data/manifest.csv \
+  --output-dir /data/patterns --output-manifest /data/pattern_manifest.csv \
+  --yolo-weights /weights/yolo.pt \
+  --sam-weights /weights/sam_vit_b_01ec64.pth \
+  --sam-model-type vit_b \
+  --sam-cache-dir data/sam_mask_cache \
+  --crop sam
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--sam-weights` | Local checkpoint. Required for `--crop sam`; **missing weights raise, they never fall back to the box crop**. |
+| `--sam-model-type` | `vit_h`, `vit_l`, `vit_b` (default, memory-safe) or `vit_t` for MobileSAM. |
+| `--sam-backend` | `auto` (mobile_sam for `vit_t`, else segment_anything), or force `segment_anything` / `mobile_sam` / `ultralytics`. |
+| `--sam-cache-dir` | Mask cache keyed by image id + detection box + segmenter fingerprint. A second pass re-reads a packed `.npz` instead of re-running SAM. |
+| `--sam-min-area-frac` | Reject a mask smaller than this fraction of the box rather than emit an empty crop. |
+| `--sam-single-mask` | Ask for one mask instead of three (faster). |
+
+The segmenter loads on first use, so a `bbox` run never allocates a SAM model.
+
+### Pruned ViT
+
+`pruned_vit_arcface` removes the lowest-magnitude attention heads and MLP hidden channels at `vit_prune_ratio`. Units are **removed from the tensors**, not zeroed, so `count_parameters` and `estimate_flops` both fall; the shape change is what makes the pruning structural. Rounding is half-up with a floor of one unit, so the three heads of `vit_tiny_patch16_224` lose one at ratio 0.25 instead of silently pruning nothing. `src.models.zero_pruned_units` is the in-place zeroing form (used to check the selection, and the literal reading of $\phi^{(-u)}$); it writes through the parameter via `index_put_`.
+
+> **Paper/code discrepancy, left open on purpose.** `paper/method.tex` §`sec:pruning` specifies a discriminability-ratio importance $I(u)=\Delta(\phi)-\Delta(\phi^{(-u)})$ with $\Delta=S_{\mathrm{inter}}/(S_{\mathrm{intra}}+\varepsilon)$. The code ranks by **weight magnitude**. Magnitude is implemented because it is simple, deterministic, needs no calibration pass, and is correct as a pruning rule; the manuscript is what must be aligned to it, or a later change must implement $\Delta$-based scoring and re-measure. The discrepancy is carried as a `TODO(paper-alignment)` and an issue-style comment in `src/models.py`. Until then the paper must not claim the discriminability criterion was executed.
+
+### Measured six-cell run
+
+`scripts/run_all_cells.sh` runs the 2×3 design with seeded splits and writes a timestamped, self-describing results directory.
+
+```bash
+# Prepared mode: two crop trees over the same identities and frames.
+#   /data/cattle/sam/<identity_id>/*.png    purified coat crops
+#   /data/cattle/bbox/<identity_id>/*.png   the same frames as YOLO box crops
+scripts/run_all_cells.sh --data-root /data/cattle --seeds "0 1 2"
+
+# Raw mode: run detection and masking here, then train.
+scripts/run_all_cells.sh --data-mode raw --data-root /data/uav \
+  --yolo-weights /weights/yolo.pt --sam-weights /weights/sam_vit_b_01ec64.pth \
+  --seeds "0 1 2"
+```
+
+Output layout:
+
+```text
+results/six_cells_<mode>_<UTC timestamp>/
+|-- run_config.txt                        seeds, ratios, config, git sha, python, timestamps
+|-- summary_six_cells.json                per-cell mean +/- SD over seeds, plus provenance
+|-- summary_six_cells.md                  the table to paste into the manuscript
+|-- seed_<n>/<crop>/<model>/metrics.json  copies of the measured metrics
+```
+
+What it refuses to do:
+
+* **Overwrite.** The results directory is created exclusively, and the run aborts before writing anything if a target `outputs/seed_*` directory already holds files.
+* **Invent a number.** Every value is read from a `metrics.json` that `src.evaluate` wrote during this run. `src/aggregate.py` rejects a file that is older than the run start, is missing or non-finite, names the wrong crop or model, has an empty gallery or query split, or carries a placeholder/simulated marker.
+* **Report a vacuous $\Delta_{\mathrm{SAM}}.$** Prepared mode needs two distinct arm directories; if `sam/` and `bbox/` resolve to one path it aborts rather than report a structural zero.
+* **Imply significance.** Seeded means and sample SD are reported, and the summary says explicitly when there is only one seed.
 
 ### Background-removed identity folders
 
@@ -259,10 +328,12 @@ Principal components:
 | Module | Responsibility |
 | --- | --- |
 | [`src/preprocess.py`](src/preprocess.py) | Detection, SAM or box cropping, and ingestion of ready identity folders |
-| [`src/models.py`](src/models.py) | Backbone construction and ViT pruning |
+| [`src/sam_mask.py`](src/sam_mask.py) | SAM prompt → mask → purified crop, lazy loading, on-disk mask cache |
+| [`src/models.py`](src/models.py) | Backbone construction and ViT structured pruning |
 | [`src/arcface.py`](src/arcface.py) | Shared ArcFace head |
 | [`src/train.py`](src/train.py) | ArcFace optimisation loop |
 | [`src/evaluate.py`](src/evaluate.py) | Rank-1 / Rank-5 retrieval and efficiency accounting |
+| [`src/aggregate.py`](src/aggregate.py) | Seeded manifests and measured-only aggregation for `run_all_cells.sh` |
 | [`src/data.py`](src/data.py) | Manifest I/O and dataset construction |
 
 ## Repository layout
@@ -284,12 +355,23 @@ Principal components:
 │   ├── preprocess.sh
 │   ├── train.sh
 │   ├── evaluate.sh
-│   └── run_experiment.sh
+│   ├── run_experiment.sh
+│   ├── run_six_cells.sh          synthetic pipeline smoke test
+│   └── run_all_cells.sh          seeded measured run into timestamped results/
+├── tests/
+│   ├── conftest.py
+│   ├── test_sam_masking.py
+│   ├── test_pruning.py
+│   ├── test_runner_and_aggregate.py
+│   ├── test_pipeline_end_to_end.py
+│   └── test_sam_real_weights.py  opt-in, real checkpoint
 └── src/
     ├── protocol.py
     ├── config.py
     ├── data.py
     ├── preprocess.py
+    ├── sam_mask.py
+    ├── aggregate.py
     ├── arcface.py
     ├── models.py
     ├── train.py
@@ -298,6 +380,15 @@ Principal components:
 ```
 
 Generated run directories, local image trees, and checkpoint files are excluded by `.gitignore`.
+
+## Tests
+
+```bash
+python3 -m pytest                                              # CPU, no SAM weights needed
+SAM_WEIGHTS=/w/sam_vit_b_01ec64.pth python3 -m pytest -m slow   # opt-in real-SAM check
+```
+
+The suite needs no GPU and no downloaded checkpoint: the SAM path runs against an injected stub segmenter, and the pruning tests assert on `count_parameters` and on the actual zeroed rows.
 
 ## Citation
 

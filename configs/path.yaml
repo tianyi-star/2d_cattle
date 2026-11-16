@@ -14,3 +14,12 @@ output_dir: outputs
 config: configs/experiment.yaml
 yolo_weights: ""
 sam_weights: ""
+# SAM variant matching sam_weights: vit_b is the memory-safe default.
+# vit_t / tiny_vit need the mobile_sam package (or backend: ultralytics).
+sam_model_type: vit_b
+# auto | segment_anything | mobile_sam | ultralytics.
+sam_backend: auto
+# cuda / cpu. Empty autodetects.
+sam_device: ""
+# Mask cache keyed by image id + detection box, so repeated passes are free.
+sam_cache_dir: data/sam_mask_cache

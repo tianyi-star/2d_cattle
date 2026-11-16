@@ -85,6 +85,7 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
 
     device = _device()
     model = build_model(model_name, config).to(device)
+    prune_report = dict(getattr(model, "prune_report", {}) or {})
     head = ArcFaceHead(
         embedding_dim=int(config["embedding_dim"]),
         num_classes=len(identities),
@@ -130,6 +131,16 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
             progress.set_postfix(loss=f"{loss.item():.4f}")
         mean_loss = running / max(n_batches, 1)
         record: dict = {"epoch": epoch, "loss": mean_loss}
+        if epoch == 1 and prune_report.get("applied"):
+            print(
+                f"{DISPLAY_NAMES[model_name]} {crop}: pruned "
+                f"{prune_report['heads_pruned']}/{prune_report['heads_before']} heads and "
+                f"{prune_report['mlp_channels_pruned']}/"
+                f"{prune_report['mlp_channels_before']} MLP channels "
+                f"(ratio {prune_report['prune_ratio']}, criterion "
+                f"{prune_report['criterion']}); parameters={count_parameters(model):,}",
+                flush=True,
+            )
         print(f"{DISPLAY_NAMES[model_name]} {crop} epoch {epoch}: loss={mean_loss:.4f}", flush=True)
 
         if rank_callback.should_run(epoch, epochs):
@@ -147,6 +158,7 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
                         "model_state": model.state_dict(),
                         "history": history + [record],
                         "parameters": count_parameters(model),
+                        "prune_report": prune_report,
                         "best_rank1": best_rank1,
                         "best_rank5": ranks["rank5"],
                         "best_epoch": epoch,
@@ -164,6 +176,7 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         "history": history,
         "rank_callback_history": rank_callback.history,
         "parameters": count_parameters(model),
+        "prune_report": prune_report,
         "best_rank1": best_rank1 if best_rank1 >= 0 else None,
     }
     ckpt_path = out / "checkpoint.pt"
@@ -181,6 +194,7 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         "num_train_images": len(train_rows),
         "num_identities": len(identities),
         "parameters": checkpoint["parameters"],
+        "prune_report": prune_report,
         "history": history,
         "rank_callback_history": rank_callback.history,
         "best_rank1": checkpoint["best_rank1"],

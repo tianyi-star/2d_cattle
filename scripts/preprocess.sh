@@ -39,4 +39,8 @@ python3 -m src.preprocess \
   --output-manifest "${out_manifest}" \
   --yolo-weights "$(read_key yolo_weights)" \
   --sam-weights "$(read_key sam_weights)" \
+  --sam-model-type "$(read_key sam_model_type || printf 'vit_b')" \
+  --sam-backend "$(read_key sam_backend || printf 'auto')" \
+  --sam-device "$(read_key sam_device)" \
+  --sam-cache-dir "$(read_key sam_cache_dir)" \
   --crop "${crop}"

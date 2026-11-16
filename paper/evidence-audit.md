@@ -301,10 +301,11 @@ marked.
 | Unsupported claim | Why |
 | --- | --- |
 | Any Rank-1 / Rank-5 / mAP / closed-set accuracy value | All are placeholders (§1) |
-| Any $\Delta_{\mathrm{SAM}}$ value, including "+0.038" or "+0.144" | Derived from placeholders; and the SAM stage is a stub (§3) |
-| SAM masking improves re-identification | Not tested; code cannot mask (§3) |
-| The pruned ViT is smaller or cheaper than ViT-Tiny | Pruning is inert at 0.25 (§4); params identical |
-| A pruned model was evaluated | No checkpoint exists; `outputs/` never committed |
+| Any $\Delta_{\mathrm{SAM}}$ value, including "+0.038" or "+0.144" | Derived from placeholders. The masking stage now works (`src/sam_mask.py`), but no $\Delta_{\mathrm{SAM}}$ has been measured on real data; any number remains unsupported. |
+| SAM masking improves re-identification | The code can now produce $I_{\mathrm{sam}}$ and $I_{\mathrm{box}}$, and tests prove they differ in pixels. **No experiment has measured a Rank-1 effect**, so the improvement claim is still unsupported. |
+| The pruned ViT is smaller or cheaper than ViT-Tiny | **Now supported by architecture alone**: at ratio 0.25 the operator removes 12/36 heads and 2,304/9,216 MLP channels, giving 4,144,064 parameters and 784,269,312 MACs at 224² against 5,623,232 / 1,074,757,632 unpruned. This is an architecture measurement, not a recognition result. |
+| A pruned model was evaluated | No real-data checkpoint exists; `outputs/` is gitignored. Only CPU smoke runs exist. |
+| The discriminability-ratio criterion $I(u)$ was used for pruning | **Not implemented.** The code ranks by weight magnitude; see the `TODO(paper-alignment)` in `src/models.py` and §4. |
 | F-ODS support selection was applied | No F-ODS code in the current tree (deleted in `72f775a`); README/method.tex describe it, nothing implements it |
 | Quality-weighted ArcFace loss $\mathcal{L}_{\mathrm{total}}$ | `src/train.py:126` uses the plain unweighted `head(embeddings, labels)`; no $w_i$ anywhere in `src/` |
 | Dynamic self-training / pseudo-labelling results | No such module; `src/self_sup_dynamic.py` was deleted in `7917b22`'s lineage; nothing in `src/` references it |
@@ -325,15 +326,15 @@ marked.
 Ordered by how much they block a CEA submission.
 
 1. **Real-data runs.** All six cells on the Zenodo archive with `configs/experiment.yaml`. Without this there is no paper.
-2. **A working SAM stage.** Implement masking (§3) or state that the `sam` arm is supplied as pre-segmented crops by an external step, and drop the claim of a controlled $\Delta_{\mathrm{SAM}}$.
-3. **A working pruning operator.** Fix `int(num_heads*ratio)` and the advanced-indexing write (§4), then re-measure params/MACs. Until then report the ViT as unpruned.
+2. ~~**A working SAM stage.**~~ **Fixed in `fix/sam-and-pruning`.** `src/sam_mask.py` prompts SAM with the detector box (`vit_b` by default, `vit_t` via MobileSAM, or ultralytics), applies `Crop(I ⊙ M, B_M)`, loads the segmenter lazily, caches masks on disk keyed by image id + detection box, and **raises** when weights are missing rather than falling back to the box crop. `src/preprocess.py --crop sam` calls it; `--crop bbox` is unchanged. Verified with real `sam_vit_b_01ec64.pth` on CPU (mask excludes pasture, shadow and legs; cached second call ~1 ms). Still outstanding: the actual Δ_SAM **measurement** on the archive — the code can now produce both arms, but no run has been done.
+3. ~~**A working pruning operator.**~~ **Fixed in `fix/sam-and-pruning`.** `int(heads*ratio)` replaced by half-up rounding with a floor of one unit (3 heads → 1 dropped at 0.25); MLP rows are written with `index_put_` / advanced assignment on the parameter, not on a copy; units are physically removed so `count_parameters` falls (5,623,232 → 4,144,064 at ratio 0.25) and MACs fall too. **The criterion is weight magnitude, not the discriminability ratio of `paper/method.tex:290-324`** — that discrepancy is now an explicit `TODO(paper-alignment)` in `src/models.py` and must be resolved in the paper text, not silently.
 4. **Data acquisition and annotation section.** Site, dates, sensor, altitude, GSD, number of flights, identity labelling, train/gallery/query counts per identity.
 5. **Validation split** if the F-ODS narrative is kept; otherwise remove F-ODS from the paper to match the code.
 6. **Repeated runs** (≥3 seeds) with mean ± SD, or an explicit statement that results are single-run.
 7. **Latency measurement** on named hardware, median of N calls after warm-up.
 8. **Ethics statement** and animal-welfare declaration.
 9. **CRediT roles**, competing-interest declaration, author-approved acknowledgements.
-10. **Fix the stale `src.simulate_results` reference** (`README.md:199`, `scripts/run_six_cells.sh:90`) so the documented runner actually completes.
+10. ~~**Fix the stale `src.simulate_results` reference.**~~ **Fixed in `fix/sam-and-pruning`.** The call is gone from `scripts/run_six_cells.sh`; that script is now labelled a synthetic smoke test and `scripts/run_all_cells.sh` is the measured runner.
 11. **Delete or clearly re-label `results/`**, whose current disclaimers were stripped (§1). Leaving them as-is invites the exact misrepresentation this audit exists to prevent.
 
 ## 12. Reference verification

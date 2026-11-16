@@ -10,3 +10,14 @@ numpy>=1.24.0
 Pillow>=10.0.0
 PyYAML>=6.0
 tqdm>=4.66.0
+
+# SAM masking (the ``sam`` arm). Install ONE of these with a matching checkpoint:
+#   segment-anything   for vit_h / vit_l / vit_b   (sam_vit_*_*.pth)
+#   mobile-sam         for vit_t (tiny_vit)        (mobile_sam.pt)
+# ultralytics above also serves SAM (sam_b.pt / sam2_t.pt) with --sam-backend ultralytics.
+# They are not pinned here because the checkpoint choice decides which package is needed.
+# segment-anything>=1.0
+# mobile-sam @ git+https://github.com/ChaoningZhang/MobileSAM.git
+
+# Test-only:
+pytest>=7.4
