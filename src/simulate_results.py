@@ -1,4 +1,4 @@
-# Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
+# Copyright 2026 Bo, Zhengzhou University / Mutong
 # SPDX-License-Identifier: Apache-2.0
 """Emit labelled simulated Rank-1 / Rank-5 figures for the six ablation cells.
 

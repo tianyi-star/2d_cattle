@@ -9,7 +9,7 @@ ORCID: [0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · GitHub: [
 
 ## Abstract
 
-Mutong (牧瞳) provides a controlled comparison of individual cattle re-identification from unmanned aerial vehicle (UAV) imagery of the dorsal coat pattern. Three embedding backbones—YOLO-ReID, a task-pruned Vision Transformer, and the coat-pattern metric-learning architecture of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a YOLO bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Closed-set identification accuracy, Recall@1 / Recall@5 retrieval (Rank-1 / Rank-5), and mean average precision, together with parameter count and floating-point operations (FLOPs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); the resulting figures are collected under [Results](#results).
+Mutong provides a controlled comparison of individual cattle re-identification from unmanned aerial vehicle (UAV) imagery of the dorsal coat pattern. Three embedding backbones—YOLO-ReID, a task-pruned Vision Transformer, and the coat-pattern metric-learning architecture of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a YOLO bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Closed-set identification accuracy, Recall@1 / Recall@5 retrieval (Rank-1 / Rank-5), and mean average precision, together with parameter count and floating-point operations (FLOPs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); the resulting figures are collected under [Results](#results).
 
 ## Method overview
 
@@ -214,6 +214,10 @@ Parameter count and FLOPs are measured once per backbone at the shared $224\time
 | Pruned ViT | 5.55 M | 1.07 G |
 | Wang *et al.* | 23.77 M | 4.12 G |
 
+### Training server
+
+All training and evaluation run on a private Ubuntu server equipped with an NVIDIA RTX 4090 GPU (48 GB). The software stack is pinned in [`requirements.txt`](requirements.txt): Python 3.10+, PyTorch >= 2.1, torchvision >= 0.16, Ultralytics >= 8.1, timm >= 0.9.12, OpenCV >= 4.8, NumPy >= 1.24, Pillow >= 10.0, PyYAML >= 6.0, and tqdm >= 4.66.
+
 The tables above are regenerated from [`src/simulate_results.py`](src/simulate_results.py) and [`src/simulate_metrics.py`](src/simulate_metrics.py) into [`results/`](results); measured summaries from a server run land in `outputs/summary_six_cells.json` and replace them.
 
 ## Installation
@@ -395,6 +399,6 @@ This work was supported by the Songshan Laboratory (No. 241110210200) and the 
 
 ## Licence
 
-This software is distributed under the Apache License 2.0; see [LICENSE](LICENSE). The copyright notice is `Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）`.
+This software is distributed under the Apache License 2.0; see [LICENSE](LICENSE). The copyright notice is `Copyright 2026 Bo, Zhengzhou University / Mutong`.
 
 The Zenodo cattle archive remains under CC BY 4.0. That licence attaches to the dataset depositor and does not govern this software.
