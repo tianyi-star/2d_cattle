@@ -125,8 +125,8 @@ redistribute new imagery.
 > **Split requirement.** Identities are partitioned **disjointly** into train / validation /
 > test — never by shuffling images. Consecutive UAV frames of one animal are near-duplicates, so an
 > image-level split lets the model retrieve a memorised frame rather than an animal and inflates
-> rank-1. See `paper/manuscript-cea.md` §3.2.1 for the rationale, and §[Split protocol](#split-protocol)
-> below for the command that produces and records the partition.
+> rank-1. See `paper/manuscript-cea.md` §3.2.1 for the rationale, and the [Split protocol](#split-protocol)
+> section below for the command that produces and records the partition.
 
 ### Split protocol
 
