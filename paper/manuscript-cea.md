@@ -587,7 +587,7 @@ comparison and the architecture family most frequently used in the cattle-identi
 literature.
 
 <!-- All three are constructed in src/models.py and were instantiated during the audit.
-     Parameter and MAC figures in Table 4 were produced by calling the repository's own
+     Parameter and MAC figures in Table 5 were produced by calling the repository's own
      count_parameters() and estimate_flops() at 224x224 with configs/experiment.yaml. -->
 
 Because the three backbones differ in capacity by more than an order of magnitude, comparing their
@@ -628,17 +628,31 @@ so that no cell can be tuned independently of the others.
 | Input resolution | 224 × 224 | `configs/experiment.yaml` |
 | Embedding dimension | 512 | `configs/experiment.yaml` |
 | Batch size | 8 | `configs/experiment.yaml` |
-| Epoch budget | 30 | `configs/experiment.yaml` |
+| Epoch budget | 【待补】 | see note below |
 | Optimiser | Adam | `src/train.py:93` |
 | Learning rate | 1 × 10⁻⁴ | `configs/experiment.yaml` |
 | Weight decay | 1 × 10⁻⁴ | `configs/experiment.yaml` |
 | ArcFace scale $s$ | 64.0 | `configs/experiment.yaml` |
 | ArcFace margin $m$ | 0.5 | `configs/experiment.yaml` |
 | Random seed | 0 | `configs/experiment.yaml` |
-| Rank callback interval | every 5 epochs | `configs/experiment.yaml` |
+| Rank callback interval | every 200 epochs | `configs/experiment.yaml` |
+| Training hardware | 1 × NVIDIA GeForce RTX 4090 (48 GB) | as run |
 
 *Table 2. Shared training configuration. Every value is read from one file and is identical for
 all six cells; the table is a description of the protocol, not of an outcome.*
+
+<!-- EPOCH BUDGET — UNRESOLVED, DO NOT GUESS.
+     The committed configs/experiment.yaml was changed on main from epochs:30 / eval_every:5 to
+     epochs:1000 / eval_every:200 (compare commits d20763e..7390aee). The row above previously
+     read "Epoch budget 30". Neither 30 nor 1000 has been confirmed by the author as the budget
+     the reported runs actually used, and the per-cell training times supplied below are not
+     enough on their own to settle it without assuming a per-epoch time we do not have.
+     Keep 【待补】 until the author confirms. Table 2 now quotes eval_every:200, which matches the
+     config on main; if the reported runs used 30 epochs they must have used eval_every:5, so the
+     two rows have to be confirmed together. -->
+【待补: 训练轮次（epoch budget）与学习率调度——须确认报告结果所用配置；
+      仓库中 configs/experiment.yaml 现为 epochs:1000、eval_every:200，
+      而更早版本为 epochs:30、eval_every:5，两者不一致，不得任选其一】
 
 Augmentation is deliberately minimal, because aggressive augmentation would interact with the crop
 factor: resizing to 224 × 224, random horizontal reflection with probability 0.5, colour jitter on
@@ -651,21 +665,53 @@ the dorsal coat pattern is not chiral, and because both arms receive it identica
 
 The training loop is a fixed-epoch procedure with no early stopping and no learning-rate schedule.
 <!-- src/train.py:113-158 -->
-A rank-1/rank-5 callback evaluates the current model on the gallery and query splits every five
-epochs and at the final epoch, and the checkpoint with the best observed rank-1 is retained.
+A rank-1/rank-5 callback evaluates the current model on the gallery and query splits at the
+configured interval and at the final epoch, and the checkpoint with the best observed rank-1 is
+retained.
 <!-- src/callbacks.py:19-52; src/train.py:137-156 -->
 This is a model-selection step and is reported as such: it uses gallery and query data, and the
 selection criterion is therefore not independent of the reported metric. It is applied identically
 to all six cells, so it does not favour one cell over another, but it does mean that the reported
 figures are best-observed rather than single-final-epoch values.
 
-<!-- The epoch budget of 30 in configs/experiment.yaml should be reconciled with the schedule
-     actually used for the reported runs before submission. The placeholder curve files in
-     results/ describe a 1000-epoch schedule, which contradicts this configuration and is one of
-     the reasons those files are excluded from this manuscript (paper/evidence-audit.md §1, §8). -->
+**Compute.** All six cells were trained on a single NVIDIA GeForce RTX 4090 (48 GB). Wall-clock
+training time per cell is given in Table 3, in the row order used throughout this paper
+(convolutional trunk, then Vision Transformer, then ResNet-50; within each backbone the
+mask-purified arm precedes the box arm).
 
-【待补: 实际报告结果所用的训练轮次与是否使用学习率调度；若与上表不同，须给出最终采用的
-配置并说明为何调整】
+| Backbone | Crop | Training time (min, wall clock) |
+| --- | --- | ---: |
+| Convolutional trunk | $I_{\mathrm{sam}}$ | 20 |
+| Convolutional trunk | $I_{\mathrm{box}}$ | 23 |
+| Vision Transformer | $I_{\mathrm{sam}}$ | 22 |
+| Vision Transformer | $I_{\mathrm{box}}$ | 30 |
+| ResNet-50 | $I_{\mathrm{sam}}$ | 27 |
+| ResNet-50 | $I_{\mathrm{box}}$ | 33 |
+
+*Table 3. Wall-clock training time per cell on one RTX 4090 (48 GB), in the cell order used
+throughout this paper and in Table 4. The values are end-to-end training times as recorded,
+supplied by the authors. Within each backbone pair the box arm took longer than the mask-purified
+arm.*
+
+<!-- Provenance: six values supplied by the author as wall-clock minutes per cell, in the paper's
+     cell order: 20, 23, 22, 30, 27, 33. Sum = 155 min = 2.58 h for all six cells.
+     The SUM IS DERIVED ARITHMETIC and is stated as such in the text; no per-epoch time and no
+     GPU-hour figure is derived, because the epoch budget is unresolved (see Table 2 note).
+     Do not back-compute epochs = 1000 or 30 from these times. -->
+
+Across the six cells this is 155 minutes of wall-clock training, that is 2.58 hours in total.
+<!-- Derived: 20+23+22+30+27+33 = 155 min; 155/60 = 2.583 h. Labelled as a sum of the values in
+     Table 3, nothing further inferred. No per-epoch time is derived: that would require the epoch
+     budget, which is unresolved (Table 2). -->
+
+【待补: 上述六个训练时长是否即产出 Table 4 结果的那批运行，须由作者确认；
+      若计时来自单独的一次运行，须说明，以免读者把时长与结果对应起来】
+
+The compute used for this study cost 980 CNY.
+<!-- Author-supplied total. Deliberately no breakdown: the author's statement does not say whether
+     it covers GPU rental, electricity, storage or platform overhead, so none is asserted here.
+     If the author later supplies a breakdown, add it; do not infer one from the wall-clock total
+     and an assumed hourly rate. -->
 
 The six cells are produced by a single orchestrating script rather than by hand, so that the
 shared settings cannot drift between cells. `scripts/run_all_cells.sh` accepts a data root, a seed
@@ -700,11 +746,9 @@ so that the mask contrast cannot be zero by construction through a pointing erro
      10 runner/aggregate tests pass on CPU.
      See paper/evidence-audit.md sections 8 and 11. -->
 
-Because the aggregation cannot emit a placeholder, Table 3 is left entirely empty in this draft.
+Because the aggregation cannot emit a placeholder, Table 4 is left entirely empty in this draft.
 The six cells will be filled only from a completed run of this script, with at least three seeds,
 and the table will then carry the mean and dispersion across seeds rather than a single value.
-
-【待补: 训练硬件（GPU 型号、数量）、单细胞训练时长、总计算开销】
 
 ### 3.7 Evaluation protocol and cost accounting
 
@@ -745,8 +789,11 @@ backbone was being measured.
 <!-- estimate_flops() returns MACs; its docstring states "Rough MAC count" (src/models.py:206).
      This manuscript reports MACs and never labels them FLOPs. -->
 
-【待补: 推理延迟——单张图像、批大小 1、指定硬件、热身若干次后取中位数的实测值；
-      须写明硬件型号与热身/计时次数】
+【待补: 推理延迟——单张图像、批大小 1 的实测值，在 NVIDIA GeForce RTX 4090 上、
+      热身若干次后取中位数；须写明热身次数与计时次数】
+<!-- Latency hardware: Table 2 states the training GPU as one RTX 4090 (48 GB). Unless the
+     author says latency was timed on a different device, that is the machine above. If it was
+     measured elsewhere, replace the model name. -->
 
 ### 3.8 Structured pruning of the Vision Transformer
 
@@ -776,7 +823,7 @@ one unit, so that a requested removal cannot silently round to nothing. On a 3-h
 $\rho = 0.25$ this removes one head per block, which is 12 of 36 heads over 12 blocks; on a
 768-channel feed-forward block it removes 192 channels, or 2,304 of 9,216 over the network. Units
 are physically removed rather than masked: the affected tensors are rebuilt without the dropped
-rows and columns, so the parameter count and the multiply–accumulate count both fall, as Table 4
+rows and columns, so the parameter count and the multiply–accumulate count both fall, as Table 5
 reports. A request for pruning that would remove nothing raises rather than training an unpruned
 network under a pruned name, and the realised pruning is recorded in the run metadata and the
 evaluation output so that a reported cell can be matched to the architecture that produced it.
@@ -801,10 +848,13 @@ evaluation output so that a reported cell can be matched to the architecture tha
 
 ### 4.1 Retrieval performance of the six cells
 
-Table 3 reports rank-1 and rank-5 for every combination of crop policy and backbone. The cells in
+Table 4 reports rank-1 and rank-5 for every combination of crop policy and backbone. The cells in
 a row share a backbone and differ only in the crop; the cells in a column share a crop and differ
 only in the network. Every figure is measured on the held-out test identities, which were seen
-neither in training nor in validation.
+neither in training nor in validation. Training time and backbone cost are reported separately —
+wall-clock training time per cell in Table 3 and the inference cost of each backbone in Table 5 —
+because a cell's training time is a property of the run rather than a retrieval result, and mixing
+the two in one table would obscure which entries are measurements of recognition performance.
 
 | Backbone | Crop | Rank-1 | Rank-5 | $\Delta_{\mathrm{SAM}}$ (rank-1) |
 | --- | --- | ---: | ---: | ---: |
@@ -815,7 +865,7 @@ neither in training nor in validation.
 | ResNet-50 | $I_{\mathrm{sam}}$ | 【待补】 | 【待补】 | — |
 | ResNet-50 | $I_{\mathrm{box}}$ | 【待补】 | 【待补】 | 【待补】 |
 
-*Table 3. Retrieval accuracy on the held-out test identities of the identity-disjoint partition
+*Table 4. Retrieval accuracy on the held-out test identities of the identity-disjoint partition
 (Table 1). No animal scored here appears in the training or validation sets.
 $I_{\mathrm{sam}}$ = mask-purified dorsal coat; $I_{\mathrm{box}}$ = detector box crop.
 $\Delta_{\mathrm{SAM}}$ is rank-1 on the purified arm minus rank-1 on the box arm, computed per
@@ -823,7 +873,7 @@ backbone. Each figure is to be read from the aggregated summary written by
 `scripts/run_all_cells.sh` (`summary_six_cells.md` in the timestamped run directory), which draws
 only on the per-cell `metrics.json` files produced by that run.*
 
-<!-- PROVENANCE. No value in Table 3 exists yet, and none may be written until
+<!-- PROVENANCE. No value in Table 4 exists yet, and none may be written until
      scripts/run_all_cells.sh has completed. The placeholder tables previously in
      results/metrics.json and results/accuracy_curves.json are hard-coded constants generated by
      src/metrics.py and src/results.py, whose own docstrings call them placeholders, and whose
@@ -832,7 +882,7 @@ only on the per-cell `metrics.json` files produced by that run.*
      precisely so that they cannot re-enter through the back door.
      See paper/evidence-audit.md sections 1 and 8. -->
 
-【待补: 每个单元格的 gallery/query 图像数与被评身份数（须与 Table 2 一致）】
+【待补: 每个单元格的 gallery/query 图像数与被评身份数（须与 Table 1 的数据统计一致）】
 
 【待补: 重复实验统计——至少 3 个随机种子的均值与标准差；若仅单次运行，须明确说明，
       并说明为何单次运行足以支撑结论】
@@ -864,7 +914,7 @@ require a third factor.
 
 ### 4.3 Computational cost
 
-Table 4 gives the cost of each backbone at the common input resolution. These figures are
+Table 5 gives the cost of each backbone at the common input resolution. These figures are
 properties of the committed architecture definitions, obtained by instantiating each model from
 the reference implementation and calling its own counting routines, so they do not depend on any
 training run.
@@ -876,7 +926,7 @@ training run.
 | Vision Transformer, pruned (ρ = 0.25) | structured, physical removal | 4,144,064 | 784,269,312 | 3.24× |
 | ResNet-50 | none | 24,557,120 | 4,088,184,832 | 16.87× |
 
-*Table 4. Cost of the inference embedding network at 224 × 224, embedding dimension 512,
+*Table 5. Cost of the inference embedding network at 224 × 224, embedding dimension 512,
 classification head excluded. Parameters and MACs measured by `count_parameters` and
 `estimate_flops` in `src/models.py` with `configs/experiment.yaml`; the relative column is the
 ratio to the convolutional trunk. These are MACs, not FLOPs. The pruned row is the ViT at
@@ -884,7 +934,7 @@ ratio to the convolutional trunk. These are MACs, not FLOPs. The pruned row is t
 now uses; the unpruned row is retained because it is the like-for-like baseline for the pruning
 comparison.*
 
-<!-- Traceability for Table 4 — all four rows reproduced independently by instantiating each
+<!-- Traceability for Table 5 — all four rows reproduced independently by instantiating each
      model and calling the repository's count_parameters / estimate_flops at 224x224:
        yolo_arcface            params 1,832,224   MACs 242,311,168
        vit unpruned (ratio 0)  params 5,623,232   MACs 1,074,757,632
@@ -916,19 +966,18 @@ running them on an aircraft.
 
 ### 4.4 Training behaviour
 
-Rank-1 and rank-5 are logged every five epochs, which gives a coarse view of whether a cell has
-converged within the 30-epoch budget or is still improving when training stops.
+Rank-1 and rank-5 are logged at the configured evaluation interval, which gives a coarse view of
+whether a cell has converged within the epoch budget or is still improving when training stops.
 
 【待补: 六个单元格的 Rank-1/Rank-5 随轮次变化曲线（数据来源 outputs/<cell>/rank_callback.json），
       以及是否出现未收敛的单元格】
 
 <!-- Do not use results/accuracy_curves.json. Those curves are placeholders drawn at epochs
-     200/400/600/800/1000, a schedule that contradicts the 30-epoch budget in
-     configs/experiment.yaml (paper/evidence-audit.md §8). -->
+     200/400/600/800/1000 (paper/evidence-audit.md §8, §1). -->
 
 A convergence diagnostic matters for the interpretation of Section 4.2: if one backbone is still
-improving at epoch 30 while another has plateaued, the between-backbone comparison at a fixed
-epoch budget understates the former, and the honest reading is that the budget, not the
+improving when another has plateaued, the between-backbone comparison at a fixed epoch budget
+understates the former, and the honest reading is that the budget, not the
 architecture, is binding. The same caveat applies to the crop contrast, since the purified arm has
 fewer informative pixels and may converge on a different trajectory.
 
@@ -991,7 +1040,7 @@ because a large network may be able to learn to ignore the background that a sma
 
 ### 5.3 What the cost figures imply for deployment
 
-The rows of Table 4 span a factor of nearly seventeen in multiply–accumulates, from the
+The rows of Table 5 span a factor of nearly seventeen in multiply–accumulates, from the
 convolutional trunk to ResNet-50. On a UAV, that factor translates into flight endurance, into the
 thermal envelope of the payload enclosure, and into whether inference can be done on board at frame
 rate or must be deferred to a ground station after landing. A deferred pipeline is not necessarily
@@ -1010,7 +1059,7 @@ aircraft. Whether the retained accuracy at the pruned operating point justifies 
 cost is an empirical question this draft does not answer, and we do not treat the compression as
 free: a pruned model that loses accuracy has not saved anything an operator cares about.
 
-The practical reading of Table 4 is therefore conditional on the intended workflow. For a
+The practical reading of Table 5 is therefore conditional on the intended workflow. For a
 post-flight batch pipeline, the ResNet-50 row is affordable and the question is purely whether
 its accuracy justifies its cost. For on-board inference at a few frames per second on an embedded
 accelerator, the convolutional trunk is the row that fits comfortably, followed by the pruned
@@ -1068,10 +1117,12 @@ so should not affect the ordering, but a fully clean protocol would carve a vali
 this purpose. The reference implementation defines no validation split, which is a shortcoming of
 the protocol as implemented.
 
-*Epoch budget.* A fixed 30-epoch budget with no schedule was chosen to keep the comparison
-symmetric. If some cells have not converged, the budget rather than the architecture is binding,
-and the between-backbone comparison is correspondingly weakened. Reporting the training curves
-(Section 4.4) is the mitigation, not a solution.
+*Epoch budget.* A fixed epoch budget with no learning-rate schedule was chosen to keep the
+comparison symmetric. If some cells have not converged, the budget rather than the architecture is
+binding, and the between-backbone comparison is correspondingly weakened. Reporting the training
+curves (Section 4.4) is the mitigation, not a solution.
+【待补: 确认最终采用的轮次；仓库配置在合并后由 epochs:30 改为 epochs:1000，
+      本稿不预设其一（另见 Table 2 注）】
 
 *Segmentation dependence.* The purified arm inherits the failure modes of the segmenter. A mask
 that clips the shoulder, or that leaks into an adjacent animal, changes what the recogniser sees in
@@ -1083,12 +1134,12 @@ the results how often the purified crop was faithful to the dorsal coat. Measuri
 area distribution and the rejection rate is straightforward from the mask cache and is the most
 obvious single improvement to the protocol.
 
-*Pruning criterion.* The compression reported in Table 4 uses weight magnitude, which is a proxy
+*Pruning criterion.* The compression reported in Table 5 uses weight magnitude, which is a proxy
 for importance rather than a measure of it. A unit can carry little weight and still be the one
 that separates two similarly patterned animals, and magnitude ranking has no way to notice. The
 embedding-geometry criterion sketched in Section 3.8 would address that directly, but it requires a
 calibration pass and one forward pass per candidate unit, and it is not implemented here. The cost
-figures in Table 4 should therefore be read as an upper bound on what careful selection could
+figures in Table 5 should therefore be read as an upper bound on what careful selection could
 achieve at the same removal rate, not as evidence that magnitude selection is near-optimal.
 
 *No open-set evaluation.* All probes are enrolled animals. A system deployed on a farm will
