@@ -714,7 +714,7 @@ adaptive flight (re-flying an animal whose image was rejected) whereas deferred 
 does not.
 
 The practical reading of Table 4 is therefore conditional on the intended workflow. For a
-post-flight batch pipeline, the ResNet-50 column is affordable and the question is purely whether
+post-flight batch pipeline, the ResNet-50 row is affordable and the question is purely whether
 its accuracy justifies its cost. For on-board inference at a few frames per second on an embedded
 accelerator, the convolutional trunk is the only one of the three that fits comfortably, and the
 relevant question becomes how much accuracy is lost by choosing it. This is why the protocol
