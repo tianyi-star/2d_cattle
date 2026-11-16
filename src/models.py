@@ -1,4 +1,4 @@
-# Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
+# Copyright 2026 Bo, Zhengzhou University / Mutong
 # SPDX-License-Identifier: Apache-2.0
 """Three embedding networks that share one ArcFace training loss.
 

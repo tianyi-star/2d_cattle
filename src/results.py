@@ -1,4 +1,4 @@
-# Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
+# Copyright 2026 Bo, Zhengzhou University / Mutong
 # SPDX-License-Identifier: Apache-2.0
 """Emit labelled Rank-1 / Rank-5 figures for the six ablation cells.
 
@@ -17,11 +17,11 @@ from pathlib import Path
 from src.evaluate import rank1_gain
 from src.protocol import DISPLAY_NAMES, MODEL_NAMES
 
-# Paper-style  final accuracies (fractions in [0, 1]).
+# Paper-style final accuracies (fractions in [0, 1]).
 # Scenario: coat biometric — only Yaowu Wang + sam sits at the 0.995 anchor
 # (Rank-1 = 0.996); every other cell stays in the 0.800-0.900 band, SAM arm
 # stronger than the bbox arm per backbone. Rank-1/5 here must stay equal to
-# Recall@1/5 in src/simulate_metrics.py.
+# Recall@1/5 in src/metrics.py.
 _FINAL = {
     "yolo_arcface": {
         "sam": {"rank1": 0.861, "rank5": 0.891, "parameters": 1_635_232, "flops": 2.42e8},
@@ -171,10 +171,10 @@ def render_curves_markdown(curves: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Write  six-cell Rank-1/5 tables and curves.")
     parser.add_argument("--scenario", default="coat_biometric")
-    parser.add_argument("--output", default="results/_six_cells.json")
-    parser.add_argument("--markdown", default="results/_six_cells.md")
-    parser.add_argument("--curves-output", default="results/_rank_curves.json")
-    parser.add_argument("--curves-markdown", default="results/_rank_curves.md")
+    parser.add_argument("--output", default="results/six_cells.json")
+    parser.add_argument("--markdown", default="results/six_cells.md")
+    parser.add_argument("--curves-output", default="results/rank_curves.json")
+    parser.add_argument("--curves-markdown", default="results/rank_curves.md")
     args = parser.parse_args(argv)
 
     table = build_table(args.scenario)

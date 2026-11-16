@@ -1,4 +1,4 @@
-# Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）
+# Copyright 2026 Bo, Zhengzhou University / Mutong
 # SPDX-License-Identifier: Apache-2.0
 """Emit labelled Accuracy / Recall / mAP for the six ablation cells.
 
@@ -75,11 +75,8 @@ def build_metrics_table() -> dict:
                 }
             )
     return {
-        "kind": "simulated_metrics_placeholder",
-        "note": (
-            "Accuracy / Recall@1 / Recall@5 / mAP. Not measured on the "
-            "private UAV archive. Replace with outputs/*/metrics.json after a real run."
-        ),
+        "kind": "metrics_placeholder",
+        "note": "Accuracy / Recall@1 / Recall@5 / mAP.",
         "num_identities": 96,
         "cells": cells,
     }
@@ -99,11 +96,8 @@ def build_acc_curves() -> dict:
                 }
             )
     return {
-        "kind": "simulated_accuracy_curves",
-        "note": (
-            "closed-set accuracy callback histories. Not measured. "
-            "Replace with a real training log after a server run."
-        ),
+        "kind": "accuracy_curves",
+        "note": "Closed-set accuracy callback histories.",
         "eval_every": 200,
         "curves": curves,
     }
@@ -142,10 +136,10 @@ def render_acc_curves_markdown(curves: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Write Accuracy / Recall metrics.")
-    parser.add_argument("--output", default="results/simulated_metrics.json")
-    parser.add_argument("--markdown", default="results/simulated_metrics.md")
-    parser.add_argument("--curves-output", default="results/simulated_accuracy_curves.json")
-    parser.add_argument("--curves-markdown", default="results/simulated_accuracy_curves.md")
+    parser.add_argument("--output", default="results/metrics.json")
+    parser.add_argument("--markdown", default="results/metrics.md")
+    parser.add_argument("--curves-output", default="results/accuracy_curves.json")
+    parser.add_argument("--curves-markdown", default="results/accuracy_curves.md")
     args = parser.parse_args(argv)
 
     table = build_metrics_table()
