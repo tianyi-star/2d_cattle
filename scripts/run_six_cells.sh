@@ -40,8 +40,17 @@ print(f"using config {cfg}")
 PY
 fi
 
+# Both arms must hold out the SAME animals, or the SAM contrast is confounded by
+# a difference in which identities were tested. The sam arm draws the partition;
+# the bbox arm reuses the one recorded in the sam split manifest.
 sh "${ROOT}/scripts/prepare_ready.sh" "${DATA_ROOT}/sam" sam
-sh "${ROOT}/scripts/prepare_ready.sh" "${DATA_ROOT}/bbox" bbox
+sam_manifest="$(require_key pattern_manifest)"
+PARTITION_FROM="${sam_manifest%.csv}.split.json"
+if [ ! -f "${PARTITION_FROM}" ]; then
+  echo "missing split manifest: ${PARTITION_FROM}" >&2
+  exit 1
+fi
+PARTITION_FROM="${PARTITION_FROM}" sh "${ROOT}/scripts/prepare_ready.sh" "${DATA_ROOT}/bbox" bbox
 
 for crop in sam bbox; do
   for model in yolo_arcface pruned_vit_arcface wang_metric; do

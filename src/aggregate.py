@@ -26,7 +26,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-from src.data import build_split_rows, list_identity_images, write_manifest
+from src.data import (
+    DEFAULT_GALLERY_FRACTION,
+    DEFAULT_IDENTITY_FRACTIONS,
+    DEFAULT_WITHIN_RATIOS,
+    MIN_TEST_IMAGES,
+    SPLIT_MODES,
+    build_split,
+    build_split_manifest,
+    list_identity_images,
+    load_identity_partition,
+    render_split_markdown,
+    write_split_artifacts,
+)
 from src.protocol import CROP_BBOX, CROP_MODES, CROP_SAM, DISPLAY_NAMES, MODEL_NAMES
 
 SUMMARY_KIND = "measured_six_cells"
@@ -53,8 +65,17 @@ def build_seed_manifest(
     output_manifest: str | Path,
     *,
     seed: int,
-    train_ratio: float = 0.6,
-    gallery_ratio: float = 0.2,
+    split_mode: str = "identity",
+    train_frac: float = DEFAULT_IDENTITY_FRACTIONS["train"],
+    val_frac: float = DEFAULT_IDENTITY_FRACTIONS["val"],
+    test_frac: float = DEFAULT_IDENTITY_FRACTIONS["test"],
+    gallery_fraction: float = DEFAULT_GALLERY_FRACTION,
+    min_test_images: int = MIN_TEST_IMAGES,
+    train_ratio: float = DEFAULT_WITHIN_RATIOS["train"],
+    gallery_ratio: float = DEFAULT_WITHIN_RATIOS["gallery"],
+    identity_partition: dict[str, list[str]] | None = None,
+    split_json: str | Path | None = None,
+    split_md: str | Path | None = None,
 ) -> list[dict[str, str]]:
     """Write a seeded split manifest for ``image_root/<identity_id>/*``.
 
@@ -62,21 +83,38 @@ def build_seed_manifest(
     repository (``/data/...``), and a manifest-relative path would be resolved
     against the repository root by :class:`src.data.ManifestDataset`, which
     cannot work for data outside the checkout.
+
+    ``split_mode="identity"`` (default) assigns whole identities to
+    train/val/test; ``split_mode="within"`` is the legacy leaky behaviour and
+    must be requested explicitly. A JSON manifest and a Table-1-ready Markdown
+    summary are written next to the CSV unless ``split_json``/``split_md``
+    point elsewhere.
     """
 
     root = Path(image_root).resolve()
     by_id = list_identity_images(root)
-    rows = build_split_rows(
+    plan = build_split(
         by_id,
         root=root,
         seed=int(seed),
+        split_mode=split_mode,
+        fractions={"train": float(train_frac), "val": float(val_frac), "test": float(test_frac)},
+        gallery_fraction=float(gallery_fraction),
+        min_test_images=int(min_test_images),
         train_ratio=float(train_ratio),
         gallery_ratio=float(gallery_ratio),
+        identity_partition=identity_partition,
     )
-    for row in rows:
+    for row in plan.rows:
         row["image_path"] = str((root / row["image_path"]).resolve())
-    write_manifest(output_manifest, rows)
-    return rows
+    write_split_artifacts(
+        plan,
+        manifest_csv=output_manifest,
+        split_json=split_json,
+        split_md=split_md,
+        source_root=root,
+    )
+    return plan.rows
 
 
 def _looks_like_placeholder(payload: dict, path: Path) -> str | None:
@@ -354,12 +392,77 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Measured-only helpers for run_all_cells.sh")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    manifest = sub.add_parser("manifest", help="Write a seeded split manifest from an identity tree")
-    manifest.add_argument("--image-root", required=True)
-    manifest.add_argument("--output-manifest", required=True)
+    manifest = sub.add_parser(
+        "manifest",
+        help="Write a seeded identity-disjoint split manifest from an identity tree",
+        description=(
+            "Assign identities (not images) to train/val/test, write the CSV plus a JSON "
+            "manifest and a Table-1-ready Markdown summary. Writes no result of any kind."
+        ),
+    )
+    manifest.add_argument("--image-root", required=True, help="Root holding <identity_id>/ folders.")
+    manifest.add_argument("--output-manifest", required=True, help="CSV to write.")
     manifest.add_argument("--seed", type=int, default=0)
-    manifest.add_argument("--train-ratio", type=float, default=0.6)
-    manifest.add_argument("--gallery-ratio", type=float, default=0.2)
+    manifest.add_argument(
+        "--split-mode",
+        default="identity",
+        choices=SPLIT_MODES,
+        help=(
+            "identity (default) holds whole animals out of train; within is the legacy "
+            "image-level split that leaks identities and inflates Rank-1."
+        ),
+    )
+    manifest.add_argument(
+        "--train-frac", type=float, default=DEFAULT_IDENTITY_FRACTIONS["train"],
+        help="Fraction of identities in train (identity mode). Default 0.667 (64/96).",
+    )
+    manifest.add_argument(
+        "--val-frac", type=float, default=DEFAULT_IDENTITY_FRACTIONS["val"],
+        help="Fraction of identities in val (identity mode). Default 0.167 (16/96).",
+    )
+    manifest.add_argument(
+        "--test-frac", type=float, default=DEFAULT_IDENTITY_FRACTIONS["test"],
+        help="Fraction of identities in test (identity mode). Default 0.167 (16/96).",
+    )
+    manifest.add_argument(
+        "--gallery-fraction",
+        type=float,
+        default=DEFAULT_GALLERY_FRACTION,
+        help="Share of each test identity's images used as gallery; the rest become queries.",
+    )
+    manifest.add_argument(
+        "--min-test-images",
+        type=int,
+        default=MIN_TEST_IMAGES,
+        help="Minimum images for an identity to be eligible for the test partition.",
+    )
+    manifest.add_argument(
+        "--train-ratio",
+        type=float,
+        default=DEFAULT_WITHIN_RATIOS["train"],
+        help="Legacy within mode only: train fraction per identity.",
+    )
+    manifest.add_argument(
+        "--gallery-ratio",
+        type=float,
+        default=DEFAULT_WITHIN_RATIOS["gallery"],
+        help="Legacy within mode only: gallery fraction per identity.",
+    )
+    manifest.add_argument(
+        "--partition-from",
+        default="",
+        help=(
+            "Reuse the identity partition recorded in this split JSON, so both crop arms and "
+            "every seed share one animal assignment."
+        ),
+    )
+    manifest.add_argument("--split-json", default="", help="Where to write the JSON manifest.")
+    manifest.add_argument("--split-md", default="", help="Where to write the Table-1 Markdown.")
+    manifest.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the split summary and write nothing. Use it to check identity counts before training.",
+    )
 
     summary = sub.add_parser("summary", help="Validate and aggregate a finished run")
     summary.add_argument("--outputs-root", required=True)
@@ -370,33 +473,90 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _manifest_command(args) -> int:
+    """Implement ``manifest``: build the split, write its artifacts, print a summary."""
+
+    if args.dry_run:
+        by_id = list_identity_images(args.image_root)
+        partition = load_identity_partition(args.partition_from) if args.partition_from else None
+        plan = build_split(
+            by_id,
+            root=Path(args.image_root).resolve(),
+            seed=int(args.seed),
+            split_mode=args.split_mode,
+            fractions={
+                "train": float(args.train_frac),
+                "val": float(args.val_frac),
+                "test": float(args.test_frac),
+            },
+            gallery_fraction=float(args.gallery_fraction),
+            min_test_images=int(args.min_test_images),
+            train_ratio=float(args.train_ratio),
+            gallery_ratio=float(args.gallery_ratio),
+            identity_partition=partition,
+        )
+        manifest = build_split_manifest(
+            plan,
+            source_root=Path(args.image_root).resolve(),
+            generated_by="python3 -m src.aggregate manifest --dry-run",
+        )
+        print(render_split_markdown(manifest), flush=True)
+        print("dry run: nothing was written. Drop --dry-run to write the manifest.", flush=True)
+        return 0
+
+    partition = load_identity_partition(args.partition_from) if args.partition_from else None
+    rows = build_seed_manifest(
+        args.image_root,
+        args.output_manifest,
+        seed=args.seed,
+        split_mode=args.split_mode,
+        train_frac=args.train_frac,
+        val_frac=args.val_frac,
+        test_frac=args.test_frac,
+        gallery_fraction=args.gallery_fraction,
+        min_test_images=args.min_test_images,
+        train_ratio=args.train_ratio,
+        gallery_ratio=args.gallery_ratio,
+        identity_partition=partition,
+        split_json=args.split_json or None,
+        split_md=args.split_md or None,
+    )
+    counts: dict[str, int] = {}
+    per_partition: dict[str, int] = {}
+    for row in rows:
+        counts[row["split"]] = counts.get(row["split"], 0) + 1
+        key = row.get("partition") or row["split"]
+        per_partition[key] = per_partition.get(key, 0) + 1
+    split_json = Path(args.split_json) if args.split_json else (
+        Path(args.output_manifest).with_suffix(".split.json")
+    )
+    split_md = Path(args.split_md) if args.split_md else (
+        Path(args.output_manifest).with_suffix(".table1.md")
+    )
+    print(
+        json.dumps(
+            {
+                "manifest": str(Path(args.output_manifest).resolve()),
+                "split_json": str(split_json.resolve()),
+                "split_markdown": str(split_md.resolve()),
+                "split_mode": args.split_mode,
+                "seed": args.seed,
+                "rows": len(rows),
+                "images_per_split": counts,
+                "images_per_partition": per_partition,
+                "identities": len({row["identity_id"] for row in rows}),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "manifest":
-            rows = build_seed_manifest(
-                args.image_root,
-                args.output_manifest,
-                seed=args.seed,
-                train_ratio=args.train_ratio,
-                gallery_ratio=args.gallery_ratio,
-            )
-            counts: dict[str, int] = {}
-            for row in rows:
-                counts[row["split"]] = counts.get(row["split"], 0) + 1
-            print(
-                json.dumps(
-                    {
-                        "manifest": str(Path(args.output_manifest).resolve()),
-                        "seed": args.seed,
-                        "rows": len(rows),
-                        "splits": counts,
-                        "identities": len({row["identity_id"] for row in rows}),
-                    },
-                    indent=2,
-                )
-            )
-            return 0
+            return _manifest_command(args)
         summary = aggregate(
             outputs_root=args.outputs_root,
             results_dir=args.results_dir,

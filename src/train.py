@@ -26,7 +26,13 @@ from tqdm import tqdm
 from src.arcface import ArcFaceHead
 from src.callbacks import RankAccuracyCallback
 from src.config import load_yaml, require_shared_config
-from src.data import ManifestDataset, filter_split, read_manifest
+from src.data import (
+    ManifestDataset,
+    assert_identity_disjoint,
+    filter_split,
+    read_manifest,
+    val_retrieval_rows,
+)
 from src.models import build_model, count_parameters
 from src.protocol import CROP_MODES, CROP_SAM, DISPLAY_NAMES, MODEL_NAMES, require_crop
 
@@ -54,9 +60,22 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
             break
 
     rows = read_manifest(manifest)
+    # An identity-disjoint manifest must not leak an animal across partitions.
+    # Legacy within-identity manifests carry no "partition" column and are
+    # allowed through only because they were requested explicitly.
+    if any("partition" in row for row in rows):
+        assert_identity_disjoint(rows)
     train_rows = filter_split(rows, "train")
     if not train_rows:
         raise ValueError(f"No train rows in manifest: {manifest}")
+    val_rows = filter_split(rows, "val")
+    if val_rows:
+        leaked = sorted(
+            {row["identity_id"] for row in val_rows}
+            & {row["identity_id"] for row in train_rows}
+        )
+        if leaked:
+            raise ValueError(f"Validation identities also appear in train: {leaked[:10]}")
 
     identities = sorted({row["identity_id"] for row in train_rows})
     identity_to_index = {iden: i for i, iden in enumerate(identities)}
@@ -107,6 +126,25 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         device=device,
         every_n_epochs=eval_every,
     )
+    # Checkpoint selection must not touch the test animals. When the manifest
+    # has a validation partition, rank val queries against val galleries and
+    # select on that; the test gallery/query pair is only ever used by
+    # src.evaluate after training is finished.
+    selection_rows = val_retrieval_rows(rows, seed=seed)
+    if selection_rows is not None:
+        selection_gallery, selection_query = selection_rows
+        selection_callback = RankAccuracyCallback(
+            rows=rows,
+            root=root,
+            image_size=image_size,
+            identity_to_index=identity_to_index,
+            batch_size=batch_size,
+            device=device,
+            every_n_epochs=eval_every,
+            retrieval_rows=(selection_gallery, selection_query),
+        )
+    else:
+        selection_callback = rank_callback
 
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -144,11 +182,17 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         print(f"{DISPLAY_NAMES[model_name]} {crop} epoch {epoch}: loss={mean_loss:.4f}", flush=True)
 
         if rank_callback.should_run(epoch, epochs):
-            ranks = rank_callback(model, epoch)
-            record["rank1"] = ranks["rank1"]
-            record["rank5"] = ranks["rank5"]
-            if ranks["rank1"] >= best_rank1:
-                best_rank1 = ranks["rank1"]
+            selection = selection_callback(model, epoch)
+            record["val_rank1"] = selection["rank1"]
+            record["val_rank5"] = selection["rank5"]
+            if selection_callback is rank_callback:
+                # Legacy within-identity manifest: no validation partition, so the
+                # historical selection rule is unchanged. src.evaluate still reports
+                # the manifest's own gallery/query pair afterwards.
+                record["rank1"] = selection["rank1"]
+                record["rank5"] = selection["rank5"]
+            if selection["rank1"] >= best_rank1:
+                best_rank1 = selection["rank1"]
                 torch.save(
                     {
                         "model_name": model_name,
@@ -160,7 +204,10 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
                         "parameters": count_parameters(model),
                         "prune_report": prune_report,
                         "best_rank1": best_rank1,
-                        "best_rank5": ranks["rank5"],
+                        "best_rank5": selection["rank5"],
+                        "best_selection_split": (
+                            "val" if selection_callback is not rank_callback else "gallery/query"
+                        ),
                         "best_epoch": epoch,
                     },
                     out / "checkpoint_best.pt",
@@ -175,6 +222,9 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         "model_state": model.state_dict(),
         "history": history,
         "rank_callback_history": rank_callback.history,
+        "selection_split": (
+            "val" if selection_callback is not rank_callback else "gallery/query"
+        ),
         "parameters": count_parameters(model),
         "prune_report": prune_report,
         "best_rank1": best_rank1 if best_rank1 >= 0 else None,
@@ -192,11 +242,18 @@ def run_training(model_name: str, manifest: str, config_path: str, output_dir: s
         "crop": crop,
         "manifest": str(Path(manifest).resolve()),
         "num_train_images": len(train_rows),
+        "num_val_images": len(val_rows),
         "num_identities": len(identities),
+        "num_held_out_identities": len(
+            {row["identity_id"] for row in rows} - set(identities)
+        ),
         "parameters": checkpoint["parameters"],
         "prune_report": prune_report,
         "history": history,
         "rank_callback_history": rank_callback.history,
+        "selection_split": (
+            "val" if selection_callback is not rank_callback else "gallery/query"
+        ),
         "best_rank1": checkpoint["best_rank1"],
         "checkpoint": str(ckpt_path),
     }

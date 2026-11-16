@@ -449,8 +449,18 @@ The split is fixed once, recorded in the manifest, and shared by all six cells a
 arms, so that no comparison between backbones or between crops is confounded by a difference in
 which animals were held out. The training, validation and test identity counts are reported in
 Table 1.
-【待补: 训练/验证/测试三个集合的身份数与具体划分方式（是否按身份编号分层、是否按体重或月龄
-      分层、随机种子），以及划分名单——须在实测运行后由清单文件直接导出，不得事后指定】
+
+The partition is drawn by sorting the identity identifiers, shuffling them with a fixed random seed,
+and assigning whole animals to the three sets in that order; the seed, the split mode, the requested
+proportions, the complete identity identifier list of each set, the image count of each set and the
+per-identity image statistics are all written to a machine-readable split manifest at run time. The
+requested proportions are 64 / 16 / 16 identities for training, validation and testing, allocated by
+largest remainder so that the three counts always sum to the number of animals partitioned; the
+manifest records the realised counts and any animal excluded, with the reason. An animal is eligible
+for the test set only if it contributes at least two frames, one for the gallery and one for the
+query; this keeps a single-frame animal from being unretrievable by construction. Both crop arms
+reuse the same recorded partition, so the SAM and box columns are evaluated on the same held-out
+animals. Table 1 is filled from that manifest rather than transcribed from a separate record.
 
 Table 1 accounts for the images and identities that enter each split. Both crop arms draw on the
 same accounting, so the table has one version rather than one per arm.
@@ -481,17 +491,24 @@ excluded animals, and the exclusions must be reported here rather than silently 
      Every other cell is unknown and must be filled from the manifest that the measured run
      actually used. See paper/evidence-audit.md section 6. -->
 
-**Implementation status of the split.** The reference code as committed does *not* yet implement
-this protocol: its manifest builder shuffles images within each identity and assigns every
-identity to all three splits, which is precisely the leak described above. The identity-disjoint
-partition specified here must therefore be produced explicitly and verified before any reported
-figure is meaningful. This discrepancy is tracked as an open item in the audit and is the first
-thing to fix before the measured runs.
-<!-- src/data.py build_split_rows() iterates per identity and splits that identity's images
-     across train/gallery/query; src/aggregate.py build_seed_manifest() delegates to it.
-     No identity-holdout path and no "val" split exist in the code (SPLITS = train/gallery/query).
-     See paper/evidence-audit.md section 8. -->
-【待补: 实现身份隔离划分的代码路径，并在清单层面验证三个集合的身份编号互不相交】
+**Implementation status of the split.** The reference code implements this protocol as its
+default. `src/data.py` partitions whole animals into disjoint `train`, `validation` and `test` sets,
+places a test animal's frames in the gallery and query roles, and raises an error if any identifier
+appears in more than one set; `src/train.py` and `src/evaluate.py` both perform that check before
+use, and the training entry point selects its checkpoint on the validation animals rather than on the
+test animals. A single command writes the manifest together with a JSON record of the partition
+(mode, seed, proportions, identity lists, image counts, totals and a SHA-256 of the manifest itself)
+and a Markdown summary of the same quantities, from which Table 1 is filled. Because the code and
+the manifest are the same artefact, the partition quoted in this paper can be regenerated exactly
+from the seed and mode it records.
+<!-- src/data.py build_split() (default split_mode="identity"); assert_identity_disjoint();
+     build_split_manifest() -> <manifest>.split.json and <manifest>.table1.md;
+     src/aggregate.py build_seed_manifest() and the `manifest` subcommand.
+     Reproduce: python3 -m src.aggregate manifest --image-root <tree> \
+       --output-manifest data/manifest.csv --seed 0 [--dry-run]
+     See paper/evidence-audit.md section 8.1. -->
+【待补: 训练/验证/测试三个集合的身份编号名单与逐身份图像数，须由实测运行的清单文件直接填表；
+      本次修改仅实现并固定了划分协议与清单格式，未进行任何实测】
 
 Because the study involves only overhead observation of animals in their normal environment, with
 no handling, restraint or intervention, the ethical position should be stated explicitly rather

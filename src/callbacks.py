@@ -11,7 +11,7 @@ from typing import Callable
 import torch
 import torch.nn as nn
 
-from src.data import filter_split
+from src.data import filter_split, gallery_rows_for_evaluation
 from src.evaluate import compute_rank_metrics, embed_split
 
 
@@ -32,10 +32,19 @@ class RankAccuracyCallback:
     device: torch.device
     every_n_epochs: int = 1
     on_result: Callable[[dict], None] | None = None
+    retrieval_rows: tuple[list[dict[str, str]], list[dict[str, str]]] | None = None
 
     def __post_init__(self) -> None:
-        self.gallery_rows = filter_split(self.rows, "gallery") or filter_split(self.rows, "train")
-        self.query_rows = filter_split(self.rows, "query")
+        if self.retrieval_rows is not None:
+            gallery_rows, query_rows = self.retrieval_rows
+            self.gallery_rows = list(gallery_rows)
+            self.query_rows = list(query_rows)
+            self.gallery_fell_back = False
+            self.retrieval_split = "explicit"
+        else:
+            self.gallery_rows, self.gallery_fell_back = gallery_rows_for_evaluation(self.rows)
+            self.query_rows = filter_split(self.rows, "query")
+            self.retrieval_split = "gallery/query"
         if not self.gallery_rows or not self.query_rows:
             raise ValueError("RankAccuracyCallback requires non-empty gallery and query splits.")
         self.history: list[dict] = []
@@ -74,6 +83,7 @@ class RankAccuracyCallback:
             "rank5": float(ranks["rank5"]),
             "num_gallery": len(self.gallery_rows),
             "num_query": len(self.query_rows),
+            "retrieval_split": self.retrieval_split,
         }
         self.history.append(record)
         print(

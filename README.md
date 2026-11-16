@@ -20,9 +20,9 @@ flowchart TD
     B --> N[YOLO box crop without SAM]
     C --> D[Purified coat-pattern image I_sam]
     N --> P[Box crop with residual background I_box]
-    D --> E[Seeded train / gallery / query split]
-    P --> Q[Same identity split as left arm]
-    E --> F[One manifest per seed]
+    D --> E[Seeded identity-disjoint split: train / val / test]
+    P --> Q[Same identity partition as left arm]
+    E --> F[One manifest per seed + JSON record]
     Q --> R[Same manifest rows]
     F --> G[Convolutional trunk]
     F --> H[Pruned ViT]
@@ -46,7 +46,7 @@ flowchart TD
     G2 & H2 & I2 --> K
 ```
 
-Detection precedes the fork. For every UAV frame, a YOLO detector returns an axis-aligned cattle box that is shared by both experimental arms; the arms therefore differ in the retained pixels, not in the animal list. In the SAM arm, that box prompts a Segment Anything Model (SAM) mask of the dorsal coat, and the recogniser receives only the masked crop $I_{\mathrm{sam}}$. Pasture, hard shadow, and limbs that fall outside the mask are excluded. In the control arm, the same box crops the original frame to $I_{\mathrm{box}}$ and SAM is not applied, so background clutter may remain. The seeded assignment of identities to `train`, `gallery`, and `query` is held identical across all six cells. At test time, each query embedding is ranked against gallery embeddings by cosine similarity of $\ell_2$-normalised vectors; Rank- $k$ is the fraction of queries whose true identity appears among the $k$ nearest gallery identities. Parameter count and multiply-accumulates (MACs) are reported once per backbone at the common input resolution and exclude the ArcFace class-weight matrix, whose width scales with the number of training identities rather than with the crop operator.
+Detection precedes the fork. For every UAV frame, a YOLO detector returns an axis-aligned cattle box that is shared by both experimental arms; the arms therefore differ in the retained pixels, not in the animal list. In the SAM arm, that box prompts a Segment Anything Model (SAM) mask of the dorsal coat, and the recogniser receives only the masked crop $I_{\mathrm{sam}}$. Pasture, hard shadow, and limbs that fall outside the mask are excluded. In the control arm, the same box crops the original frame to $I_{\mathrm{box}}$ and SAM is not applied, so background clutter may remain. The seeded, identity-disjoint partition of animals into `train`, `validation`, and `test` is held identical across all six cells; `gallery` and `query` are both drawn from the held-out test animals. At test time, each query embedding is ranked against gallery embeddings by cosine similarity of $\ell_2$-normalised vectors; Rank- $k$ is the fraction of queries whose true identity appears among the $k$ nearest gallery identities. Parameter count and multiply-accumulates (MACs) are reported once per backbone at the common input resolution and exclude the ArcFace class-weight matrix, whose width scales with the number of training identities rather than with the crop operator.
 
 The primary ablation question is:
 
@@ -122,15 +122,70 @@ never by its identifier range.
 This project applies an identification protocol to that public archive; it does not collect or
 redistribute new imagery.
 
-> **Split requirement.** Identities must be partitioned **disjointly** into train / validation /
+> **Split requirement.** Identities are partitioned **disjointly** into train / validation /
 > test — never by shuffling images. Consecutive UAV frames of one animal are near-duplicates, so an
 > image-level split lets the model retrieve a memorised frame rather than an animal and inflates
-> rank-1. See `paper/manuscript-cea.md` §3.2.1 for the rationale.
->
-> **Not yet implemented.** `src/data.py:build_split_rows()` currently shuffles each identity's own
-> images into train/gallery/query, so every identity lands in all three sets, and no `val` split
-> exists (`SPLITS = ("train", "gallery", "query")`). Any rank-1 produced by the current pipeline is
-> inflated. This is tracked as gap item 1 in `paper/evidence-audit.md` §8.
+> rank-1. See `paper/manuscript-cea.md` §3.2.1 for the rationale, and §[Split protocol](#split-protocol)
+> below for the command that produces and records the partition.
+
+### Split protocol
+
+The default split is **identity-disjoint**. `src/data.py:build_split()` sorts the identity ids,
+shuffles them with a seeded RNG, and assigns whole animals to `train`, `val` and `test`. Gallery and
+query images are then both drawn from the held-out test animals, so no animal that was trained on can
+be retrieved at evaluation time. With the 96 identities of the archive and the default proportions the
+partition is **64 train / 16 val / 16 test** identities.
+
+A single call writes three files, and together they are the citable record of the split:
+
+| File | Contents |
+| --- | --- |
+| `manifest.csv` | one row per image: `image_path`, `identity_id`, `split`, `partition` |
+| `manifest.split.json` | split mode, seed, proportions, the full identity list and image count of every partition, per-identity image statistics, totals, and the SHA-256 of the CSV |
+| `manifest.table1.md` | a Markdown data-accounting table ready to paste into Table 1 of the manuscript |
+
+```bash
+# Plan the split and print the accounting without writing anything:
+python3 -m src.aggregate manifest \
+  --image-root /path/to/identity_crops \
+  --output-manifest data/manifest.csv \
+  --seed 0 --dry-run
+
+# Write the split (CSV + JSON record + Table-1 summary):
+python3 -m src.aggregate manifest \
+  --image-root /path/to/identity_crops \
+  --output-manifest data/manifest.csv \
+  --seed 0
+```
+
+Options: `--train-frac` / `--val-frac` / `--test-frac` (defaults 0.6667 / 0.1667 / 0.1667, must sum to
+1), `--gallery-fraction` (default 0.5, the share of each test animal's images used as gallery),
+`--min-test-images` (default 2, so a test animal can supply both a gallery and a query view). Identity
+counts are allocated by largest remainder, so the three partitions always sum to the identity total.
+The JSON also records `excluded_identities`, which is empty unless the identity count cannot support
+the requested proportions.
+
+`scripts/run_all_cells.sh --manifest-only` runs that step for every seed and both crop arms, copies the
+JSON and Markdown records into the timestamped results directory, and exits before any training. Use
+it to check the partition before committing to a long run. In identity mode the two crop arms reuse one
+partition (`--partition-from`), so a difference between the SAM and box columns cannot come from
+different animals being held out.
+
+**Legacy mode.** `--split-mode within` restores the old behaviour, which deals each identity's own
+images across `train` / `gallery` / `query` and therefore puts every animal in every split. It exists
+only to rebuild an old manifest for comparison; a Rank-1 computed from such a manifest is inflated by
+identity and near-duplicate leakage and must not be reported as identification accuracy. The JSON
+record and the Markdown summary both state this explicitly when the mode is used. It is never a
+default.
+
+Both modes are reproducible: the same seed and mode produce byte-identical rows, and `split.json`
+records the CSV's SHA-256, so a quoted split can be identified exactly. `src.train` and
+`src.evaluate` verify the pair before use and raise if the CSV was edited after the record was
+written, or if any identity appears in two partitions.
+
+Checkpoint selection uses the `val` animals, never the test animals: `src/train.py` ranks validation
+queries against validation galleries to pick a checkpoint, and the test `gallery` / `query` pair is
+only touched once, by `src/evaluate.py`, after training ends.
 
 ### Directory layout
 
@@ -160,7 +215,7 @@ ${ROOT}
 | Path key | Description |
 | --- | --- |
 | `raw_image_dir` | UAV frames supplied to detection |
-| `manifest` | Identity table with columns `image_path`, `identity_id`, and `split` |
+| `manifest` | Identity table with columns `image_path`, `identity_id`, `split`, and `partition` |
 | `pattern_dir` | SAM-purified back-pattern crops |
 | `pattern_manifest` | SAM-arm manifest (identical identities and splits; distinct pixels) |
 | `bbox_crop_dir` | YOLO-box crops without SAM |
@@ -170,21 +225,29 @@ ${ROOT}
 | `output_dir` | Per-model output directories |
 | `config` | Shared experiment configuration |
 
-The field `split` takes values `train`, `gallery`, or `query`. Preprocessing copies the split onto both crop manifests so that all six cells share the same animals. Training uses `train` rows; evaluation ranks each `query` row against the `gallery` rows of the same manifest.
+The field `split` takes values `train`, `val`, `gallery`, or `query`, and `partition` takes values
+`train`, `val`, or `test`. In an identity-disjoint manifest `partition` is the animal's assignment and
+`split` is the per-image role inside it: a train animal's images are all `split=train`, a validation
+animal's are all `split=val`, and a test animal's images are dealt into `split=gallery` and
+`split=query`. Preprocessing copies both columns onto each crop manifest so that all six cells share
+the same animals. Training uses the `train` rows; evaluation ranks each `query` row against the
+`gallery` rows of the same manifest, which belong to animals the model never saw.
 
-Example `manifest.csv`:
+Example identity-disjoint `manifest.csv` (three different animals, no overlap):
 
 ```text
-image_path,identity_id,split
-data/raw/c001_a.jpg,c001,train
-data/raw/c001_b.jpg,c001,gallery
-data/raw/c001_c.jpg,c001,query
+image_path,identity_id,split,partition
+data/raw/101_a.jpg,101,train,train
+data/raw/101_b.jpg,101,train,train
+data/raw/150_a.jpg,150,val,val
+data/raw/277_a.jpg,277,gallery,test
+data/raw/277_b.jpg,277,query,test
 ```
 
 ## Installation
 
 1. Download `dataShare.zip` from Zenodo (record `10.5281/zenodo.13364663`) and point `raw_image_dir` at your identity tree, or use `READY/` of per-identity crops. See the Dataset section above.
-2. Construct `manifest.csv` with columns `image_path`, `identity_id`, and `split`.
+2. Construct `manifest.csv` with columns `image_path`, `identity_id`, `split`, and `partition` (see [Split protocol](#split-protocol)); `python3 -m src.aggregate manifest` writes it for you.
 3. Set `yolo_weights` and `sam_weights` in `configs/path.yaml` when detection and masking are required.
 4. Create a Python 3.10+ environment and install dependencies:
 
@@ -256,27 +319,42 @@ The segmenter loads on first use, so a `bbox` run never allocates a SAM model.
 
 ### Measured six-cell run
 
-`scripts/run_all_cells.sh` runs the 2×3 design with seeded splits and writes a timestamped, self-describing results directory.
+`scripts/run_all_cells.sh` runs the 2×3 design with an identity-disjoint, seeded split and writes a
+timestamped, self-describing results directory. Check the split before paying for the run:
 
 ```bash
-# Prepared mode: two crop trees over the same identities and frames.
-#   /data/cattle/sam/<identity_id>/*.png    purified coat crops
-#   /data/cattle/bbox/<identity_id>/*.png   the same frames as YOLO box crops
-scripts/run_all_cells.sh --data-root /data/cattle --seeds "0 1 2"
+# 1. Plan only: build the manifest for every seed and both arms, print the
+#    identity/image accounting, and exit without training.
+scripts/run_all_cells.sh --data-root /data/cattle --manifest-only
 
-# Raw mode: run detection and masking here, then train.
+# 2. The measured run. Same split, now with training and evaluation.
+scripts/run_all_cells.sh --data-root /data/cattle --seeds "0 1 2"
+```
+
+Prepared mode expects two crop trees over the same identities and frames:
+`/data/cattle/sam/<identity_id>/*.png` (purified) and `/data/cattle/bbox/<identity_id>/*.png`
+(YOLO box crops). Raw mode runs detection and masking here, then trains:
+
+```bash
 scripts/run_all_cells.sh --data-mode raw --data-root /data/uav \
   --yolo-weights /weights/yolo.pt --sam-weights /weights/sam_vit_b_01ec64.pth \
   --seeds "0 1 2"
 ```
 
+Split flags: `--split-mode identity|within` (default `identity`), `--train-frac` / `--val-frac` /
+`--test-frac` (defaults 0.6667 / 0.1667 / 0.1667), `--gallery-fraction` (default 0.5) and
+`--min-test-images` (default 2). Every value used is written to `run_config.txt`.
+
 Output layout:
 
 ```text
 results/six_cells_<mode>_<UTC timestamp>/
-|-- run_config.txt                        seeds, ratios, config, git sha, python, timestamps
+    |-- run_config.txt                        seeds, split mode, fractions, config, git sha
 |-- summary_six_cells.json                per-cell mean +/- SD over seeds, plus provenance
 |-- summary_six_cells.md                  the table to paste into the manuscript
+|-- manifest_<crop>_seed_<n>.split.json   the split record: seed, mode, identity lists, counts
+|-- manifest_<crop>_seed_<n>.table1.md    the data accounting to paste into Table 1
+|-- manifest_<crop>_seed_<n>.json         the manifest build log (paths and per-split row counts)
 |-- seed_<n>/<crop>/<model>/metrics.json  copies of the measured metrics
 ```
 
@@ -285,15 +363,25 @@ What it refuses to do:
 * **Overwrite.** The results directory is created exclusively, and the run aborts before writing anything if a target `outputs/seed_*` directory already holds files.
 * **Invent a number.** Every value is read from a `metrics.json` that `src.evaluate` wrote during this run. `src/aggregate.py` rejects a file that is older than the run start, is missing or non-finite, names the wrong crop or model, has an empty gallery or query split, or carries a placeholder/simulated marker.
 * **Report a vacuous $\Delta_{\mathrm{SAM}}.$** Prepared mode needs two distinct arm directories; if `sam/` and `bbox/` resolve to one path it aborts rather than report a structural zero.
+* **Confound the crop arms with the partition.** Both arms reuse one animal partition, so the same animals are held out for the SAM and the box column.
+* **Leak an identity.** `src.train` and `src.evaluate` raise if any animal appears in two partitions, or if the manifest CSV no longer matches the JSON record written beside it.
 * **Imply significance.** Seeded means and sample SD are reported, and the summary says explicitly when there is only one seed.
 
 ### Background-removed identity folders
 
-When dorsal-coat images for the 96 identities are already available as `READY/<identity_id>/*`, the SAM-arm manifest may be constructed without re-running detection:
+When dorsal-coat images for the 96 identities are already available as `READY/<identity_id>/*`, the SAM-arm manifest may be constructed without re-running detection. This writes the CSV, the JSON split record and the Table-1 summary:
 
 ```bash
 sh scripts/prepare_ready.sh /path/to/READY sam
 sh scripts/run_experiment.sh sam
+```
+
+The partition is identity-disjoint by default (64 / 16 / 16 identities). Override it with `SPLIT_MODE`,
+`SEED`, `TRAIN_FRAC`, `VAL_FRAC`, `TEST_FRAC`, `GALLERY_FRACTION` and `MIN_TEST_IMAGES`. To make the
+second crop arm hold out the same animals, pass the first arm's record:
+
+```bash
+PARTITION_FROM=data/pattern_manifest.split.json sh scripts/prepare_ready.sh /path/to/READY bbox
 ```
 
 This command sequence trains and evaluates YOLO-ReID, the pruned ViT, and the ResNet Wang *et al.* stand-in under the shared ArcFace loss. Metrics are written to `outputs/*/metrics.json` and summarised in `outputs/summary_sam.json`.
