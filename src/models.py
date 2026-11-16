@@ -110,16 +110,16 @@ def units_to_prune(num_units: int, ratio: float) -> int:
     return min(count, num_units - 1)
 
 
-# Issue (paper/code discrepancy, tracked, do not "fix" silently in prose):
-#   paper/method.tex:290-324 specifies head/channel importance as the drop in a
-#   discrimination ratio, I(u) = Delta(phi) - Delta(phi^(-u)) with
-#   Delta = S_inter / (S_intra + eps) measured on a calibration split.
-#   The code below ranks units by |w| (weight magnitude) instead.
-#   Weight magnitude is implemented because it is simple, deterministic, needs
-#   no calibration pass, and is correct as a baseline pruning rule. The paper
-#   text is what must change to describe magnitude pruning (or a follow-up change
-#   must implement Delta-based scoring and re-measure). Until then the manuscript
-#   must not claim the discriminability criterion was executed.
+# Criterion note (historical; the papers are now aligned to this code):
+#   paper/method.tex sec:pruning and paper/manuscript-cea.md section 3.8 both
+#   describe the ranking below as the implemented criterion, namely weight
+#   magnitude |w|. The discriminability-ratio rule
+#   I(u) = Delta(phi) - Delta(phi^(-u)), with
+#   Delta = S_inter / (S_intra + eps) on a calibration split, appears in
+#   method.tex only as an explicitly labelled design direction that was NOT
+#   evaluated. It is not implemented here and no reported figure uses it.
+#   Weight magnitude is what this code does: deterministic, no calibration
+#   pass, no extra forward passes.
 def _magnitude_scores(weight: torch.Tensor) -> torch.Tensor:
     """Mean absolute weight per row. Higher means more important."""
 
@@ -333,14 +333,15 @@ def _prune_vit(model: nn.Module, prune_ratio: float) -> dict:
     The importance score is plain weight magnitude (mean absolute weight of the
     unit, in the Q/K/V rows for a head and in the ``fc1`` row for a channel).
 
-    TODO(paper-alignment): ``paper/method.tex`` (``sec:pruning``,
-    ``eq. importance``) specifies a *discriminability-ratio* criterion
+    Criterion note: both ``paper/method.tex`` (``sec:pruning``) and
+    ``paper/manuscript-cea.md`` (section 3.8) describe this function as the
+    implemented rule, namely ranking by weight magnitude. The
+    *discriminability-ratio* criterion
     $I(u) = \\Delta(\\phi) - \\Delta(\\phi^{(-u)})$ with
-    $\\Delta = S_{inter} / (S_{intra} + \\varepsilon)$, computed on a calibration
-    split. This function does NOT implement that criterion; it ranks by weight
-    magnitude. See the issue-style note above :func:`_magnitude_scores`.
-    The manuscript text has to be changed to match the code (or this ranking
-    replaced) before any pruning claim is written; the two are not the same method.
+    $\\Delta = S_{inter} / (S_{intra} + \\varepsilon)$ on a calibration split is
+    documented there only as a design direction that was NOT evaluated. This
+    function does not implement it, and no reported figure uses it. See the
+    note above :func:`_magnitude_scores` for the history.
 
     Units are removed, not zeroed: the tensors are rebuilt without the dropped
     rows/columns, so :func:`count_parameters` falls. Returns a report of what was

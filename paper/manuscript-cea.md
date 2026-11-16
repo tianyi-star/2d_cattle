@@ -672,10 +672,10 @@ evaluation output so that a reported cell can be matched to the architecture tha
      the prune report carries "criterion": "weight_magnitude".
      Measured at rho=0.25: params 5,623,232 -> 4,144,064, MACs 1,074,757,632 -> 784,269,312,
      heads 36 -> 24, MLP channels 9,216 -> 6,912.
-     The code carries a TODO(paper-alignment) at src/models.py recording that paper/method.tex
-     sec:pruning specifies a discriminability-ratio criterion that is NOT implemented; this
-     section is the aligned text. 12 pruning tests pass, including one that pins the old
-     advanced-indexing no-op as a regression.
+     The criterion is weight magnitude; paper/method.tex sec:pruning has been rewritten to
+     match this section, and both now present the discriminability-ratio criterion as an
+     explicitly labelled direction that was NOT evaluated. 12 pruning tests pass, including
+     one that pins the old advanced-indexing no-op as a regression.
      See paper/evidence-audit.md section 4. -->
 
 【待补: 剪枝后是否微调、微调轮次与学习率；若未微调，须说明剪枝网络的权重直接来自

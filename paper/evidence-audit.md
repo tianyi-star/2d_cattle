@@ -190,19 +190,22 @@ head rather than 0; the tensors are rebuilt without the dropped rows and columns
 training an unpruned model under a pruned name. 12 pruning tests pass, including one that pins the
 old advanced-indexing no-op as a regression.
 
-### 4.2 The criterion discrepancy — still open, and the paper must not paper over it
+### 4.2 The criterion discrepancy — resolved in the text, code unchanged on purpose
 
-**`paper/method.tex` §`sec:pruning` specifies a discriminability-ratio criterion
-$I(u)=\Delta(\phi)-\Delta(\phi^{(-u)})$ with $\Delta = S_{\mathrm{inter}}/(S_{\mathrm{intra}}+\varepsilon)$
-on a calibration split. The implementation ranks by weight magnitude**
-(`_magnitude_scores` = `weight.abs().mean(dim=1)`; the prune report literally records
-`"criterion": "weight_magnitude"`). `src/models.py` carries a `TODO(paper-alignment)` saying so.
+**The implementation ranks by weight magnitude** (`_magnitude_scores` =
+`weight.abs().mean(dim=1)`; the prune report literally records
+`"criterion": "weight_magnitude"`). A discriminability-ratio criterion
+$I(u)=\Delta(\phi)-\Delta(\phi^{(-u)})$ with
+$\Delta = S_{\mathrm{inter}}/(S_{\mathrm{intra}}+\varepsilon)$ on a calibration split is a
+different method with a materially higher cost: it needs a calibration split and one forward pass
+per candidate unit.
 
-These are different methods with different costs — the $\Delta$ criterion needs a calibration split
-and one forward pass per candidate unit. The manuscript now describes magnitude ranking as what is
-implemented, and presents the $\Delta$ criterion explicitly as an unevaluated direction. It must
-not claim the $\Delta$ criterion was used. `paper/method.tex` itself still contains the old text and
-should be corrected or removed before submission.
+Both write-ups now describe magnitude ranking as the implemented rule and present the $\Delta$
+criterion only as an explicitly labelled design direction that was **not evaluated**:
+`paper/manuscript-cea.md` §3.8 and §5.4, and `paper/method.tex` §`sec:pruning`. No result in the
+repository was produced with the $\Delta$ criterion, and neither document claims otherwise. The
+historical note survives as a comment above `_magnitude_scores` in `src/models.py`; the
+`TODO(paper-alignment)` marker is gone because there is no longer a misalignment to track.
 
 ## 5. The only *synthetic-data* runs are ellipse images; real runs now have a runner
 
@@ -376,7 +379,7 @@ marked.
 | Param count excludes the ArcFace weight matrix | `src/models.py`; `src/protocol.py:47-50` |
 | Parameter and MAC counts in §7 (pruned and unpruned) | Reproduced by running `count_parameters` / `estimate_flops` |
 | Structured pruning physically removes units; params and MACs fall | `src/models.py`; re-measured: 5,623,232→4,144,064, 1,074,757,632→784,269,312 (§4.1) |
-| Pruning is ranked by weight magnitude, not by $\Delta(\phi)$ | `src/models.py` `_magnitude_scores`, `"criterion": "weight_magnitude"`; `TODO(paper-alignment)` (§4.2) |
+| Pruning is ranked by weight magnitude, not by $\Delta(\phi)$ | `src/models.py` `_magnitude_scores`, `"criterion": "weight_magnitude"` (§4.2) |
 | SAM masking produces $I_{\mathrm{sam}} \ne I_{\mathrm{box}}$ from the same box | `src/sam_mask.py`; `tests/test_sam_masking.py` (13 tests) |
 | Mask cache suppresses a second segmenter call | `src/sam_mask.py` `MaskCache`, `CACHE_SCHEMA`; tested |
 | Missing SAM weights abort preprocessing rather than falling back | `SamWeightsMissing`; `tests/test_sam_masking.py` |
@@ -399,7 +402,7 @@ marked.
 | SAM masking improves re-identification | The code can now produce $I_{\mathrm{sam}}$ and $I_{\mathrm{box}}$, and tests prove they differ in pixels. **No experiment has measured a Rank-1 effect**, so the improvement claim is still unsupported. |
 | The pruned ViT is smaller or cheaper than ViT-Tiny | **Now supported by architecture alone**: at ratio 0.25 the operator removes 12/36 heads and 2,304/9,216 MLP channels, giving 4,144,064 parameters and 784,269,312 MACs at 224² against 5,623,232 / 1,074,757,632 unpruned. This is an architecture measurement, not a recognition result. |
 | A pruned model was evaluated | No real-data checkpoint exists; `outputs/` is gitignored. Only CPU smoke runs exist. |
-| The discriminability-ratio criterion $I(u)$ was used for pruning | **Not implemented.** The code ranks by weight magnitude; see the `TODO(paper-alignment)` in `src/models.py` and §4. |
+| The discriminability-ratio criterion $I(u)$ was used for pruning | **Not implemented.** The code ranks by weight magnitude; both write-ups now say so and label $\Delta$ as an unevaluated direction (§4.2). |
 | F-ODS support selection was applied | No F-ODS code in the current tree (deleted in `72f775a`); README/method.tex describe it, nothing implements it |
 | Quality-weighted ArcFace loss $\mathcal{L}_{\mathrm{total}}$ | `src/train.py:126` uses the plain unweighted `head(embeddings, labels)`; no $w_i$ anywhere in `src/` |
 | Dynamic self-training / pseudo-labelling results | No such module; `src/self_sup_dynamic.py` was deleted in `7917b22`'s lineage; nothing in `src/` references it |
@@ -421,7 +424,7 @@ Ordered by how much they block a CEA submission.
 
 1. **Real-data runs.** All six cells on the Zenodo archive with `configs/experiment.yaml`. Without this there is no paper.
 2. ~~**A working SAM stage.**~~ **Fixed in `fix/sam-and-pruning`.** `src/sam_mask.py` prompts SAM with the detector box (`vit_b` by default, `vit_t` via MobileSAM, or ultralytics), applies `Crop(I ⊙ M, B_M)`, loads the segmenter lazily, caches masks on disk keyed by image id + detection box, and **raises** when weights are missing rather than falling back to the box crop. `src/preprocess.py --crop sam` calls it; `--crop bbox` is unchanged. Verified with real `sam_vit_b_01ec64.pth` on CPU (mask excludes pasture, shadow and legs; cached second call ~1 ms). Still outstanding: the actual Δ_SAM **measurement** on the archive — the code can now produce both arms, but no run has been done.
-3. ~~**A working pruning operator.**~~ **Fixed in `fix/sam-and-pruning`.** `int(heads*ratio)` replaced by half-up rounding with a floor of one unit (3 heads → 1 dropped at 0.25); MLP rows are written with `index_put_` / advanced assignment on the parameter, not on a copy; units are physically removed so `count_parameters` falls (5,623,232 → 4,144,064 at ratio 0.25) and MACs fall too. **The criterion is weight magnitude, not the discriminability ratio of `paper/method.tex:290-324`** — that discrepancy is now an explicit `TODO(paper-alignment)` in `src/models.py` and must be resolved in the paper text, not silently.
+3. ~~**A working pruning operator.**~~ **Fixed in `fix/sam-and-pruning`.** `int(heads*ratio)` replaced by half-up rounding with a floor of one unit (3 heads → 1 dropped at 0.25); MLP rows are written with `index_put_` / advanced assignment on the parameter, not on a copy; units are physically removed so `count_parameters` falls (5,623,232 → 4,144,064 at ratio 0.25) and MACs fall too. **The criterion is weight magnitude, not the discriminability ratio** — that discrepancy has since been resolved in the text of `paper/method.tex` and `paper/manuscript-cea.md` §3.8, both of which now describe magnitude ranking as implemented (§4.2).
 4. **Data acquisition and annotation section.** Site, dates, sensor, altitude, GSD, number of flights, identity labelling, train/gallery/query counts per identity.
 5. **Validation split** if the F-ODS narrative is kept; otherwise remove F-ODS from the paper to match the code.
 6. **Repeated runs** (≥3 seeds) with mean ± SD, or an explicit statement that results are single-run. *Partly addressed:* `scripts/run_all_cells.sh --seeds "0 1 2"` produces per-seed manifests and run directories and records the seed list in `run_config.txt`, so the mechanism exists; the runs themselves have not been done.
@@ -430,7 +433,7 @@ Ordered by how much they block a CEA submission.
 9. **CRediT roles**, competing-interest declaration, author-approved acknowledgements.
 10. ~~**Fix the stale `src.simulate_results` reference.**~~ **Fixed in `fix/sam-and-pruning`.** The call is gone from `scripts/run_six_cells.sh`; that script is now labelled a synthetic smoke test and `scripts/run_all_cells.sh` is the measured runner.
 11. **Delete or clearly re-label `results/`**, whose current disclaimers were stripped (§1). Leaving them as-is invites the exact misrepresentation this audit exists to prevent. *Partly addressed:* `src/aggregate.py` now refuses to aggregate a placeholder-tagged or stale `metrics.json`, so the old constants cannot re-enter a reported table through the pipeline; the files themselves are still present.
-12. **Correct or remove `paper/method.tex` §`sec:pruning`**, which still specifies the discriminability-ratio criterion the code does not implement (§4.2). The manuscript text is now aligned; this draft file is not.
+12. ~~**Correct or remove `paper/method.tex` §`sec:pruning`.**~~ **Fixed.** `paper/method.tex` was rewritten so that weight-magnitude ranking is described as the implemented criterion, matching `paper/manuscript-cea.md` §3.8. The discriminability-ratio criterion survives only under an explicit "design direction and was not evaluated" label, with the equations left in place for a follow-on study. The same pass marked F-ODS, quality-weighted loss and dynamic self-training as **not implemented** (§`sec:not-implemented`), corrected the "YOLO-ReID is not a YOLO" and "wang_metric is a random-init ResNet" naming, removed the few-shot/prototype and validation-split machinery that the code lacks, and changed FLOPs to multiply–accumulates. `README.md` and the comments in `src/models.py` were updated to match, as were the `MODEL_ROLES` display strings in `src/protocol.py`.
 
 ## 12. Reference verification
 
