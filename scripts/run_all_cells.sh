@@ -8,12 +8,14 @@
 # Full list of options: scripts/run_all_cells.sh --help
 #
 # Two modes:
-#   --data-mode prepared (default)  data-root must hold BOTH crop trees:
-#                                     <data-root>/sam/<identity_id>/*.png
-#                                     <data-root>/bbox/<identity_id>/*.png
-#                                   the same identities and frames, once purified by
-#                                   SAM and once cropped by the YOLO box. Build them
-#                                   with scripts/prepare_ready.sh (one call per arm).
+#   --data-mode prepared (default)  either of:
+#                                     <data-root>/<identity_id>/*     images as stored.
+#                                       No SAM mask and no box crop are built.
+#                                       The run is labeled crop "id".
+#                                     <data-root>/sam/<identity_id>/*
+#                                     <data-root>/bbox/<identity_id>/*
+#                                       only when those trees already exist and
+#                                       --crops asks for them.
 #   --data-mode raw                 <data-root>/*.{jpg,png,...} UAV frames plus
 #                                   <data-root>/manifest.csv from your annotation step;
 #                                   this script then runs YOLO + SAM/bbox preprocessing.
@@ -84,7 +86,10 @@ Options:
   --gallery-ratio F     Legacy 'within' mode only: gallery fraction per identity. Default 0.2.
   --outputs-root DIR    Checkpoints and per-cell metrics. Default outputs.
   --results-root DIR    Where the timestamped run directory is created. Default results.
-  --crops "sam bbox"    Crop arms to run. Default both.
+  --crops "sam bbox"    Crop arms to run when sam/ and bbox/ trees exist.
+                        Default both. An identity-folder data-root (no sam/ or
+                        bbox/ child) is always crop "id": the images are used
+                        as stored, and SAM is not run.
   --models "..."        Backbones to run. Default all three.
   --yolo-weights FILE   Required only for --data-mode raw.
   --sam-weights FILE    Required only for --data-mode raw with the sam arm.
@@ -99,6 +104,24 @@ EOF
 
 die() { echo "error: $*" >&2; exit 1; }
 log() { printf '\n=== %s ===\n' "$*"; }
+
+is_identity_tree() {
+  python3 - "$1" <<'PY'
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+if not root.is_dir():
+    raise SystemExit(1)
+for child in root.iterdir():
+    if not child.is_dir() or child.name in {"sam", "bbox"}:
+        continue
+    for path in child.rglob("*"):
+        if path.is_file() and path.suffix.lower() in suffixes:
+            raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -152,6 +175,16 @@ if any(v <= 0 for v in values):
 if abs(sum(values) - 1.0) > 1e-6:
     raise SystemExit(f"error: split fractions must sum to 1, got {values} (sum {sum(values)})")
 PY
+
+# Identity folders at the data root are the images as stored. Do not look for a
+# sam/ or bbox/ tree, and do not build either crop.
+if [ "${DATA_MODE}" = "prepared" ] && [ ! -d "${DATA_ROOT}/sam" ] && [ ! -d "${DATA_ROOT}/bbox" ] && is_identity_tree "${DATA_ROOT}"; then
+  if [ "${CROPS}" != "id" ]; then
+    echo "No sam/ or bbox/ tree under ${DATA_ROOT}."
+    echo "Using the identity folders as stored. Crop label: id. SAM is not run."
+  fi
+  CROPS="id"
+fi
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 RUN_NAME="six_cells_${DATA_MODE}_${STAMP}"
@@ -241,20 +274,25 @@ split_args() {
 log "Preparing data (${DATA_MODE})"
 case "${DATA_MODE}" in
   prepared)
-    # prepared mode needs BOTH crop trees, because the ablation contrasts pixels:
-    #   <data-root>/sam/<identity_id>/*   purified coat crops (background removed)
-    #   <data-root>/bbox/<identity_id>/*  the same frames as YOLO box crops
-    # Pointing both arms at one directory would make Delta_SAM zero by
-    # construction, which is the defect this runner must not reproduce.
+    # Two layouts:
+    #   <data-root>/<identity_id>/*            images as stored (crop label id)
+    #   <data-root>/{sam,bbox}/<identity_id>/* only if those trees already exist
+    # This runner does not build a SAM mask or a detector crop.
     for crop in ${CROPS}; do
       case "${crop}" in
+        id) arm_root="${DATA_ROOT}" ;;
         sam) arm_root="${DATA_ROOT}/sam" ;;
         bbox) arm_root="${DATA_ROOT}/bbox" ;;
+        *) die "unknown crop: ${crop} (expected id, sam, or bbox)" ;;
       esac
-      [ -d "${arm_root}" ] || die "prepared mode needs ${arm_root}/<identity_id>/* for the ${crop} arm.
-  Build the two trees with scripts/prepare_ready.sh, or use --data-mode raw to
-  run YOLO + SAM here. Both arms are required: one shared directory would make
-  the SAM contrast vacuous."
+      if [ "${crop}" = "id" ]; then
+        is_identity_tree "${arm_root}" || die "prepared mode needs ${arm_root}/<identity_id>/* .
+  Put one folder per animal directly under the data root. SAM is not run."
+      else
+        [ -d "${arm_root}" ] || die "prepared mode needs ${arm_root}/<identity_id>/* for the ${crop} arm.
+  This data root has no ${crop}/ tree. To train on identity folders as stored, pass that
+  directory as --data-root and do not ask for a sam or bbox tree."
+      fi
       printf '%s' "${arm_root}" > "${RESULTS_DIR}/arm_root_${crop}.txt"
     done
     if [ -d "${DATA_ROOT}/sam" ] && [ -d "${DATA_ROOT}/bbox" ]; then
@@ -272,8 +310,13 @@ case "${DATA_MODE}" in
       for crop in ${CROPS}; do
         out_csv="${DATA_ROOT}/manifest_${crop}_seed_${seed}.csv"
         # shellcheck disable=SC2046
+        if [ "${crop}" = "id" ]; then
+          image_root="${DATA_ROOT}"
+        else
+          image_root="${DATA_ROOT}/${crop}"
+        fi
         python3 -m src.aggregate manifest \
-          --image-root "${DATA_ROOT}/${crop}" \
+          --image-root "${image_root}" \
           --output-manifest "${out_csv}" \
           --seed "${seed}" \
           $(split_args) \
@@ -376,6 +419,7 @@ python3 -m src.aggregate summary \
   --results-dir "${RESULTS_DIR}" \
   --config "${CONFIG}" \
   --started-at "${STARTED_AT}" \
+  --crops ${CROPS} \
   --seeds ${SEEDS}
 
 {

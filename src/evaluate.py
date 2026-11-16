@@ -31,7 +31,7 @@ from src.data import (
 )
 from src.models import build_model, count_parameters, estimate_flops
 from src.protocol import (
-    CROP_MODES,
+    ACCEPTED_CROPS,
     CROP_SAM,
     DISPLAY_NAMES,
     METRIC_NAMES,
@@ -219,8 +219,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--crop",
         default=CROP_SAM,
-        choices=CROP_MODES,
-        help="sam evaluates the purified back pattern. bbox evaluates the YOLO box crop.",
+        choices=ACCEPTED_CROPS,
+        help=(
+            "sam evaluates a mask crop. bbox evaluates a box crop. "
+            "id evaluates the identity folders as stored."
+        ),
     )
     return parser
 

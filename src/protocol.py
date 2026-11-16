@@ -34,7 +34,11 @@ MODEL_ROLES = {
 
 CROP_SAM = "sam"
 CROP_BBOX = "bbox"
+CROP_ID = "id"
+# The paired ablation. ``id`` is not part of it: it is the identity-folder tree
+# used as stored, with no mask and no box crop.
 CROP_MODES = (CROP_SAM, CROP_BBOX)
+ACCEPTED_CROPS = (CROP_SAM, CROP_BBOX, CROP_ID)
 
 CROP_ROLES = {
     CROP_SAM: (
@@ -43,6 +47,9 @@ CROP_ROLES = {
     CROP_BBOX: (
         "YOLO bounding-box crop of the original frame. SAM is not applied, "
         "so background, shadow, and legs can remain inside the crop."
+    ),
+    CROP_ID: (
+        "Images as stored, one folder per identity. No SAM mask and no detector crop are applied."
     ),
 }
 
@@ -78,10 +85,10 @@ def stop_private(step: str) -> None:
 
 
 def require_crop(crop: str) -> str:
-    """Accept either arm of the ablation. Neither crop is optional."""
+    """Accept a paired-ablation arm or the as-stored identity tree."""
 
-    if crop not in CROP_MODES:
-        joined = ", ".join(CROP_MODES)
+    if crop not in ACCEPTED_CROPS:
+        joined = ", ".join(ACCEPTED_CROPS)
         raise ValueError(f"crop must be one of: {joined}")
     return crop
 
