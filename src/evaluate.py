@@ -21,7 +21,14 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.config import load_yaml, require_shared_config
-from src.data import ManifestDataset, filter_split, read_manifest
+from src.data import (
+    ManifestDataset,
+    assert_identity_disjoint,
+    filter_split,
+    gallery_rows_for_evaluation,
+    read_manifest,
+    verify_manifest_artifacts,
+)
 from src.models import build_model, count_parameters, estimate_flops
 from src.protocol import (
     CROP_MODES,
@@ -151,11 +158,12 @@ def run_evaluation(model_name: str, manifest: str, config_path: str, run_dir: st
     model = model.to(device)
 
     rows = read_manifest(manifest)
-    gallery_rows = filter_split(rows, "gallery")
+    # A manifest that leaks an identity across partitions cannot produce an
+    # identification estimate. Check before any embedding is computed, and
+    # cross-check the JSON companion when one was written.
+    verify_manifest_artifacts(manifest, rows)
+    gallery_rows, gallery_fell_back = gallery_rows_for_evaluation(rows)
     query_rows = filter_split(rows, "query")
-    # If gallery is empty (tiny splits), fall back to train as gallery prototypes.
-    if not gallery_rows:
-        gallery_rows = filter_split(rows, "train")
     root = _repo_root(manifest)
     image_size = int(config["image_size"])
     batch_size = int(config["batch_size"])
@@ -169,6 +177,9 @@ def run_evaluation(model_name: str, manifest: str, config_path: str, run_dir: st
     ranks = compute_rank_metrics(query_emb, query_ids, gallery_emb, gallery_ids)
     params = int(checkpoint.get("parameters") or count_parameters(model))
     flops = estimate_flops(model, image_size, device)
+    test_partition = {row["identity_id"] for row in rows if row.get("partition") == "test"}
+    query_identities = sorted(set(query_ids))
+    gallery_identities = sorted(set(gallery_ids))
 
     result = {
         "model": model_name,
@@ -180,6 +191,12 @@ def run_evaluation(model_name: str, manifest: str, config_path: str, run_dir: st
         "flops": flops,
         "num_gallery": len(gallery_rows),
         "num_query": len(query_rows),
+        # Identity-disjoint retrieval: every retrieved animal is held out of training.
+        "split_mode": "identity" if any("partition" in row for row in rows) else "within",
+        "num_test_identities": len(test_partition),
+        "num_query_identities": len(query_identities),
+        "query_identities_without_gallery": sorted(set(query_identities) - set(gallery_identities)),
+        "gallery_fell_back_to_train": gallery_fell_back,
         "prune_report": checkpoint.get("prune_report") or {},
         "sam_ablation_question": SAM_ABLATION_QUESTION,
     }
