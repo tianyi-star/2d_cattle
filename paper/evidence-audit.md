@@ -213,7 +213,7 @@ historical note survives as a comment above `_magnitude_scores` in `src/models.p
 trains all six cells on it. `src/make_synthetic.py:24-39` renders each "identity" as a
 randomly coloured ellipse with random dots on a black field; the "pasture clutter" is a
 sinusoidal gradient plus Gaussian noise (`src/make_synthetic.py:44-57`). These are not cattle,
-not UAV imagery, and not the private UAV collection. That script is now labelled a synthetic smoke test.
+not UAV imagery, and not the Zenodo archive. That script is now labelled a synthetic smoke test.
 
 The measured path is `scripts/run_all_cells.sh` + `src/aggregate.py`, added in
 `fix/sam-and-pruning`. It trains the 2 × 3 cells with seeded splits into an exclusively created,
@@ -233,25 +233,26 @@ of the real collection; its outputs are not scientific results."
 
 **No experiment on real cattle imagery has been run in this repository.**
 
-## 6. Dataset: provenance corrected, contents still unverified
+## 6. Dataset: Zenodo archive, held locally; contents still unverified
 
-**Correction (supersedes the original finding).** This section previously recorded the Zenodo
-record `10.5281/zenodo.13364663` as the source of the imagery. That was wrong. The author has since
-stated that the data analysed in this work is a private UAV RGB collection held at
-`/home/iadi/UAV-basedData/RGB-data/individaulsByIds` on a GPU server, organised as one folder per
-identity, folders named `101`–`328` non-contiguously, 96 cattle identities. It is **not** the
-Zenodo release and must not be described as publicly deposited anywhere in the paper.
+**Final provenance (supersedes two earlier versions of this section).** The imagery is the Zenodo
+archive of Wang (2024), record `10.5281/zenodo.13364663` (CC BY 4.0), **downloaded and stored
+locally** at `/home/iadi/UAV-basedData/RGB-data/individaulsByIds` on the author's GPU server as one
+directory per identity (names `101`–`328`, non-contiguous, 96 identities). An intermediate revision
+of this audit wrongly called the data private and wrongly denied the Zenodo origin; that has been
+reversed. The manuscript now states the archive origin and the local path in §3.2.
 
 | Item | Evidence | Status |
 | --- | --- | --- |
-| Source | Author statement: private UAV RGB collection on the GPU server, one identity folder per animal, non-contiguous identifiers `101`–`328`, 96 identities | **Taken on the author's word.** The path was not reachable from the environment where this audit was prepared (`/home/iadi` does not exist on the drafting VM), so nothing about the contents has been independently verified. |
-| Identity count | 96, per author | Citable as a collection property. Not a count performed by this repository. |
-| Relationship to Wang et al. (2024/2025) | Wang's release (`10.5281/zenodo.13364663`, 96 Simmental, paired airborne + ground RGB/LiDAR) remains a genuine prior work and is cited as related work | **Both have 96 identities.** The coincidence is a trap: a reader may assume this study reuses that release. §3.2 now states the distinction explicitly. |
-| Images actually used | none available | `data/` absent and gitignored. No manifest, no per-identity image counts, no split sizes exist in the repository. |
-| Split construction | `src/data.py` `build_split_rows()`; `src/aggregate.py` `build_seed_manifest()` | **See §13 — this is the most serious open defect.** The code splits images *within* each identity; it does not hold identities out. |
+| Source | Zenodo `10.5281/zenodo.13364663`, downloaded to `/home/iadi/UAV-basedData/RGB-data/individaulsByIds` | Verified against the Zenodo API: title, depositor (Wang, Yaowu), publication date 2024-08-23, licence `cc-by-4.0`, single file `dataShare.zip`, 26,486,342,645 bytes. |
+| Identity count | 96 | Documented by the archive record and the companion record; not counted here. |
+| Breed | 96 Simmental **male** beef cattle | Documented by companion record `10.5281/zenodo.13361729` ("There are 96 Simmental male beef cattle in the datasets UAV-RGB and Ground-RGB") and by the data article (Wang et al. 2025, *Scientific Data* 12:1318, "we chose to collect data on Simmental beef cattle"). **Citable, with the record as the source** — the paper attributes it to the record rather than asserting it as its own observation. |
+| Site and dates | Xinshiji commercial farm, Changge County, Henan Province, China; 31 Dec 2022 – 9 Jan 2023 | Documented in the data article (doi `10.1038/s41597-025-04783-6`). Not yet written into the manuscript — flagged `【待补】` pending the author confirming the local copy matches that campaign. |
+| Platform | DJI M300 with Zenmuse L1 LiDAR; integrated RGB camera at 1/3 Hz | Documented in the data article. RGB-specific parameters (focal length, GSD, native resolution) are **not** stated there in the text retrieved, so they remain `【待补】`. |
+| Images actually used | none available | `data/` absent and gitignored; the local copy is on the GPU server. No manifest, no per-identity image counts, no split sizes in the repository. |
+| Split construction | `src/data.py` `build_split_rows()`; `src/aggregate.py` `build_seed_manifest()` | **See §8 — the most serious open defect.** The code splits images *within* each identity; it does not hold identities out. |
 | Annotation protocol | none | No guidelines, no identity-verification procedure, no inter-annotator check, no detection ground truth. |
-| Acquisition parameters | none | No altitude, GSD, sensor, date, site, pen layout or lighting range. All `【待补】` in §3.2 of the manuscript. |
-| Breed / coat description | none | Previously asserted "Simmental"; that came from the Zenodo record and no longer applies. Now `【待补】`. |
+| Acquisition parameters (GSD, camera, resolution) | not in the archive description | `【待补】` in §3.2. The archive description names the platform but not the RGB optics. |
 
 ## 7. What I independently measured (reproducible, and legitimately reportable)
 
@@ -370,7 +371,7 @@ CEA (Elsevier, ISSN 0168-1699) guide-for-authors essentials, and the gap for eac
 | References in Elsevier author–date (Harvard) style, DOIs where available | Handled: every reference below was resolved through the Crossref API. |
 | Editors favour citations to CEA itself | Addressed: 15 of the 27 reference entries are CEA papers (§10), i.e. 15 of 28 DOIs in the file. |
 | Ethics / animal welfare statement (live animals) | **Missing.** No ethics approval number or welfare statement anywhere in the repo. |
-| Preprint/data availability | Partial: the code is Apache-2.0; the imagery is private and offered on request. No measured artefacts to deposit. |
+| Preprint/data availability | Partial: the imagery is public on Zenodo (CC BY 4.0) and the code is Apache-2.0. No measured artefacts to deposit. |
 
 **Bottom line for CEA:** the submission cannot yet be an empirical research article. It can
 honestly be a *methods-and-protocol* paper with an empty results table, which CEA does publish
@@ -395,7 +396,7 @@ it; "gap" means the repository or author must supply something.
 | 8 | CRediT author statement | **Drafted.** Single author, full role list; needs author confirmation. |
 | 9 | Declaration of competing interest | **Have.** Standard declaration. |
 | 10 | Acknowledgements, including funders | **Have.** Songshan Laboratory 241110210200 and Henan Major S&T 221100210600, per `README.md:340-342`; dataset depositor credited. |
-| 11 | Data availability statement | **Have, conservatively.** Offers the imagery from the corresponding author on request and points to the Apache-2.0 code; deliberately promises no public deposit, because there is none. Needs the author to confirm the offer is acceptable to the journal.0 code; deliberately does *not* promise trained weights, because none exist. |
+| 11 | Data availability statement | **Have.** Points to the public Zenodo archive (CC BY 4.0), the companion code record, and the data article; states that a local copy is held on the authors' server and that no additional data were generated, and points to the Apache-2.0 code. |
 | 12 | Ethics / animal-welfare statement | **Gap.** Nothing in the repo; `【待补】` for the approval number. Non-invasive aerial observation is the argument, but it needs the author's institutional confirmation. |
 | 13 | Elsevier author–date (Harvard) references with DOIs | **Have.** 27 entries, all resolved via Crossref/Zenodo; one `【需核对】` on the ViT/ICLR entry, where no DOI exists. |
 | 14 | Cite the target journal where relevant | **Have.** 15 of 27 entries are CEA papers, spanning cattle re-ID (Andrew 2021; Wang 2025; Chen 2026; Pathak & Prakash 2025), UAV livestock imaging (Wang 2023; Yan 2026), tracking (Han 2023; Liu 2024; Zhao 2026) and reviews (Rohan 2024; Rahman 2025). |
@@ -428,7 +429,8 @@ marked.
 | Training uses Adam, lr 1e-4, wd 1e-4, 30 epochs, batch 8, 224² | `configs/experiment.yaml`; `src/train.py` |
 | Augmentation = flip + colour jitter + ImageNet norm | `src/data.py:132-150` |
 | The six cells are the 3×2 product of backbone and crop | `src/protocol.py:84-87` |
-| Dataset identity: private UAV RGB collection, 96 cattle identities, one folder per animal | Author statement (§6); **not** publicly deposited |
+| Dataset identity: Zenodo 10.5281/zenodo.13364663 (Wang 2024, CC BY 4.0), 96 Simmental beef cattle, downloaded and held locally | Zenodo API; companion record 13361729; data article doi 10.1038/s41597-025-04783-6 (§6) |
+| Companion code/records: Zenodo 10.5281/zenodo.13361729 | Zenodo API (§6), cited in `README.md` |
 | Wang et al. (2024/2025) remain related work, not the data source | Crossref/Zenodo metadata verified; §3.2 states the distinction |
 | Software licence Apache-2.0 | `LICENSE`; `CITATION.cff` |
 | Funding: Songshan Laboratory 241110210200; Henan Major S&T 221100210600 | `README.md` |
@@ -467,7 +469,7 @@ Ordered by how much they block a CEA submission.
    is inflated by identity and near-duplicate leakage. This is now the first thing to fix, ahead of
    the runs, because it determines whether the numbers mean anything. The manuscript specifies the
    protocol (§3.2.1) and states in the text that the code does not yet implement it.
-2. **Real-data runs.** All six cells on the private UAV collection with `configs/experiment.yaml`,
+2. **Real-data runs.** All six cells on the local copy of the Zenodo archive with `configs/experiment.yaml`,
    using the identity-disjoint partition. Without this there is no paper.
 3. ~~**A working SAM stage.**~~ **Fixed in `fix/sam-and-pruning`.** `src/sam_mask.py` prompts SAM with the detector box (`vit_b` by default, `vit_t` via MobileSAM, or ultralytics), applies `Crop(I ⊙ M, B_M)`, loads the segmenter lazily, caches masks on disk keyed by image id + detection box, and **raises** when weights are missing rather than falling back to the box crop. `src/preprocess.py --crop sam` calls it; `--crop bbox` is unchanged. Verified with real `sam_vit_b_01ec64.pth` on CPU (mask excludes pasture, shadow and legs; cached second call ~1 ms). Still outstanding: the actual Δ_SAM **measurement** on the archive — the code can now produce both arms, but no run has been done.
 4. ~~**A working pruning operator.**~~ **Fixed in `fix/sam-and-pruning`.** `int(heads*ratio)` replaced by half-up rounding with a floor of one unit (3 heads → 1 dropped at 0.25); MLP rows are written with `index_put_` / advanced assignment on the parameter, not on a copy; units are physically removed so `count_parameters` falls (5,623,232 → 4,144,064 at ratio 0.25) and MACs fall too. **The criterion is weight magnitude, not the discriminability ratio** — that discrepancy has since been resolved in the text of `paper/method.tex` and `paper/manuscript-cea.md` §3.8, both of which now describe magnitude ranking as implemented (§4.2).

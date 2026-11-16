@@ -195,7 +195,7 @@ This section specifies the measurements the protocol requires. It reports no Ran
 \subsection{Data, Split, and Fairness Constraints}
 \label{sec:data-protocol}
 
-The image source is a private UAV RGB collection of 96 cattle identities, acquired by the authors and stored as one directory per animal (identity identifiers are non-contiguous). It is \emph{not} the publicly released archive of Wang \emph{et al.}~\cite{wang2024uavlidar,wang2025coatdml}; that work is cited as related research and its published identification figures are not restated here or treated as results of the three-branch protocol. The imagery is available from the corresponding author on request. Capture parameters --- altitude, ground sampling distance, sensor, flight dates and site --- are properties of the campaign and are recorded separately \textbf{[to be supplied]}.
+The image source is the Zenodo archive of Wang \emph{et al.}~\cite{wang2024uavlidar} (record 10.5281/zenodo.13364663, CC BY 4.0), which was downloaded and is stored locally on our GPU server at \texttt{/home/iadi/UAV-basedData/RGB-data/individaulsByIds}, organised as one directory per identity. The directory names are herd identifiers and are non-contiguous. The archive documents 96 semi-free-range beef cattle, recorded as 96 Simmental male beef cattle in the companion record (10.5281/zenodo.13361729). The imagery is publicly available; this study applies an identification protocol to it rather than collecting it. Published identification figures from Wang \emph{et al.}~\cite{wang2025coatdml} are not restated here or treated as results of the three-branch protocol. Capture parameters --- flight altitude, ground sampling distance, camera model and focal length, image resolution, campaign dates and site --- are documented in the accompanying data article \cite{wang2025datadescriptor} and are \textbf{[to be confirmed against that record and the flight logs]}.
 
 The labeled frames are partitioned \emph{by animal}, not by image: each of the 96 identities is assigned to exactly one of a training, a validation and a test set, and every image of that animal inherits the assignment. This is required because consecutive UAV frames of one animal are near-duplicates; an image-level split would place near-identical frames on both sides of the train/test boundary and let a model retrieve a memorised frame rather than an animal, inflating rank-1. The identity lists are written into the manifest, the three sets are asserted to be disjoint, and the partition is frozen before any model is fitted and shared by every cell and every ablation arm. \textbf{[Identity split counts and the identity lists to be supplied from the manifest.]}
 
@@ -281,4 +281,9 @@ Zenodo, 2024, doi: 10.5281/zenodo.13364663.
 Y.~Wang, C.~A.~M\"ucher, K.~Wang, W.~Wang, and L.~Kooistra,
 ``Deep metric learning for individual cattle identification using coat patterns: Proposal for a best practice,''
 \emph{Comput. Electron. Agric.}, vol.~238, p.~110754, 2025, doi: 10.1016/j.compag.2025.110754.
+
+\bibitem{wang2025datadescriptor}
+Y.~Wang, L.~Kooistra, S.~M\"ucher, and W.~Wang,
+``Integrated unmanned aerial vehicle-based LiDAR and RGB data for individual cattle growth monitoring in precision livestock farming,''
+\emph{Sci. Data}, vol.~12, art.~1318, 2025, doi: 10.1038/s41597-025-04783-6.
 \end{thebibliography}

@@ -26,8 +26,9 @@ recurring cost and require handling, which motivates identification from imagery
 by unmanned aerial vehicles (UAVs). Cattle re-identification is otherwise studied almost entirely
 from the ground, where the flank fills the frame and the coat is side-lit; from low altitude the
 animal is small, seen from above, and only its dorsal coat is available as a cue. We study
-identification in that regime on a UAV RGB dataset of 96 cattle identities, and ask how much of a
-reported accuracy reflects the animal rather than its surroundings. Because studies differ in
+identification in that regime on an openly released UAV archive of 96 Simmental beef cattle, and
+ask how much of a reported accuracy reflects the animal rather than its surroundings. Because
+studies differ in
 segmentation, crop policy, backbone and gallery composition at once, we use a controlled factorial
 protocol rather than a new architecture: two paired crops from the same detections — a
 mask-purified dorsal coat region and the plain bounding box in which pasture, shadow and limbs
@@ -82,11 +83,12 @@ Holstein-Friesian and Simmental animals has been shown to be sufficiently indivi
 sufficiently stable over weeks, to support retrieval. Andrew et al. (2017) showed visual
 localisation and individual identification of Holstein-Friesian cattle from a moving platform, and
 Andrew et al. (2021) developed the approach into a deep metric learning system with an explicit
-treatment of the open-set case. Wang et al. (2025) extended coat-pattern identification to paired
+treatment of the open-set case. Wang et al. (2025a) extended coat-pattern identification to paired
 aerial and ground imagery of 96 Simmental beef cattle and proposed it as a best practice, releasing
-both the imagery (Wang, 2024) and the accompanying code and logs. The herd analysed in the present
-study is a separate collection; its breed composition is recorded in Section 3.2 rather than
-assumed to match those earlier studies. Related biometrics have been pursued in
+both the imagery (Wang, 2024) and the accompanying code and logs. The present study analyses that
+same released archive, downloaded and stored locally on our GPU server; our contribution is the
+identification protocol applied to it, not the collection itself. Related biometrics have been
+pursued in
 parallel: muzzle patterns (Li et al., 2022), gait dynamics combined with coat pattern (Chen et
 al., 2026), and multi-modal fusion of several appearance cues (Pathak and Prakash, 2025).
 
@@ -207,7 +209,7 @@ the cue set, the resolution, the viewpoint distribution and the gallery composit
 a numeric comparison across them would be uninformative in either direction. The relevant
 comparison is internal — between crop policies and between backbones under one objective on one
 dataset — and the external literature supplies the motivation and the design vocabulary, not a
-benchmark to beat.
+leaderboard to be topped.
 
 The identification task itself comes in two forms that are often conflated. Closed-set
 identification asks which of a fixed enrolled set an image belongs to, and is evaluated by
@@ -351,61 +353,64 @@ $\Delta_{\mathrm{SAM}}$ to be interpreted as an effect of cropping rather than o
 
 ### 3.2 Animals, data acquisition and annotation
 
-The imagery used in this study is a UAV RGB dataset of individual cattle, acquired by the authors
-and organised as one folder per animal, with 96 cattle identities in total. The identity folders
-are labelled by the animal's identifier and are not contiguous — the identifiers span a wider
-range than their count, because the herd numbering includes animals that are outside this
-collection — so the dataset is described here by its identity count rather than by its identifier
-range.
+The imagery analysed in this study is obtained from the Zenodo archive of Wang (2024), record
+[10.5281/zenodo.13364663](https://doi.org/10.5281/zenodo.13364663), which was downloaded and is
+stored locally on our GPU server at `/home/iadi/UAV-basedData/RGB-data/individaulsByIds`. The
+local copy is organised as one directory per animal; the directory names are the herd identifiers
+and are not contiguous, so the collection is described throughout by its identity count rather
+than by its identifier range. The archive documents 96 semi-free-range beef cattle, and the
+companion record (Wang, 2024, `10.5281/zenodo.13361729`) records them as 96 Simmental male beef
+cattle; we therefore describe the herd as 96 Simmental beef cattle and cite those records for the
+claim rather than asserting it as our own observation.
 
-<!-- Dataset provenance, as supplied by the author:
-     location /home/iadi/UAV-basedData/RGB-data/individaulsByIds on the GPU server,
-     one directory per identity named 101 ... 328 (non-contiguous), 96 identities, UAV RGB.
-     This is NOT the Zenodo record 10.5281/zenodo.13364663 assumed in earlier drafts, and no
-     part of this manuscript may describe the data as publicly deposited.
-     The directory was not reachable from the environment in which this draft was prepared, so
-     no image counts, per-identity counts or exclusions have been verified. Everything that
-     depends on the capture or on directory contents is 【待补】 by design. -->
+<!-- Provenance, as confirmed by the author (this supersedes two earlier drafts, one of which
+     wrongly called the data private and one of which wrongly denied the Zenodo origin):
+       source  : Zenodo record 10.5281/zenodo.13364663 (Wang 2024, CC BY 4.0, dataShare.zip,
+                 26,486,342,645 bytes)
+       local   : /home/iadi/UAV-basedData/RGB-data/individaulsByIds on the GPU server,
+                 one directory per identity, names 101 ... 328 non-contiguous, 96 identities
+       breed   : "96 Simmental male beef cattle" - companion record 10.5281/zenodo.13361729
+       article : Wang, Kooistra, Mücher & Wang (2025), Scientific Data 12:1318,
+                 doi 10.1038/s41597-025-04783-6 - documents site, dates, platform and breed.
+     The local directory was not reachable from the environment where this draft was prepared,
+     so per-identity image counts and split sizes are unverified and remain 【待补】. -->
 
-This collection is distinct from the published UAV cattle datasets used in prior coat-pattern work.
-Wang et al. (2025) report on 96 animals drawn from a paired airborne and ground-level collection
-that they released openly (Wang, 2024); that release remains the reference point for coat-pattern
-identification and we cite it as such, but the imagery analysed here is a separate acquisition in
-which every image is airborne and every animal is represented by a folder of dorsal views. We make
-the distinction explicit because the two collection sizes coincide at 96 identities, and a reader
-could otherwise assume this study reuses that release.
-
-**Low-altitude aerial capture as the distinguishing setting.** The imagery is captured from a
-low-altitude unmanned aerial vehicle looking down on the animals. This is a materially different
+**Low-altitude aerial capture as the distinguishing setting.** The imagery is captured from an
+unmanned aerial vehicle flying over the animals at low altitude. This is a materially different
 imaging regime from the one that dominates the cattle re-identification literature, and it is
-worth stating plainly why, because it is the reason the dataset is interesting rather than merely
-another cattle collection. Ground-level studies photograph an animal at eye height: the head, the
-muzzle, the flank and the legs are available, the animal fills the frame, and the background is
+worth stating plainly why, because it is the reason this collection is interesting rather than
+merely another cattle dataset. Ground-level studies photograph an animal at eye height: the head,
+the muzzle, the flank and the legs are available, the animal fills the frame, and the background is
 whatever happens to be behind it. An aerial view offers none of that. The camera sees the dorsal
-surface only, at an oblique-to-near-nadir angle depending on where the aircraft was relative to
-the animal; the animal occupies a small part of a wide frame; the head is usually foreshortened or
-hidden; and the coat pattern is observed under near-uniform downward illumination rather than
-under the side-lighting that makes ground-level texture cues legible.
+surface at an oblique-to-near-nadir angle; the animal occupies a modest part of a wide frame; the
+head is foreshortened or hidden; and the coat pattern is observed under near-uniform downward
+illumination rather than under the side-lighting that makes ground-level texture cues legible.
 
 Two consequences follow for identification, and both shape the protocol. First, the usable
 biometric is the dorsal coat pattern and essentially nothing else — not the face, not the gait
-signature available from a side view, not the animal's height against a familiar background.
+signature available from a side view, not the animal's dimensions against a familiar background.
 Second, the nuisance factors are different in kind: at low altitude the immediate surroundings are
 pasture, shadow and the body of a neighbouring animal, all of which are visible in a rectangular
 crop and all of which can correlate with identity when animals are grouped by pen or paddock. This
 is what motivates the paired-crop comparison of Section 3.3 rather than treating segmentation as a
-preprocessing detail.
+preprocessing detail. For livestock management the practical consequence is direct: a recogniser
+that survives an aerial view can be run off survey flights a growth-monitoring programme is already
+making, which is what makes per-animal records affordable in a pasture system.
 
-The acquisition parameters a reader needs in order to judge transferability and to reproduce the
-geometry are listed below. They are properties of the capture campaign and are recorded here as
-items still to be supplied from the flight logs, not as values inferred from the imagery.
+**Capture parameters.** The site, campaign dates, platform and sensor are documented in the data
+article accompanying the archive (Wang et al., 2025b). Where the present study
+depends on a parameter that the archive documents, we cite the record; where the parameter affects
+the recognition geometry but is not pinned down for this local copy, we leave it to be confirmed
+against the flight logs rather than restating a figure we have not verified.
+
 【待补: 飞行高度与地面采样距离 (GSD)、相机型号与焦距、原始图像分辨率、飞行架次与日期、
-      养殖场位置与圈舍/放牧地布局、光照条件范围——须据飞行记录逐项填写，不得由图像推测】
+      养殖场位置与圈舍/放牧地布局、光照条件范围——须据飞行记录或数据文章逐项核对后填写；
+      不得由图像推测，也不得照抄其他研究】
 
 Animal-level metadata is needed for the same reason: a reader cannot judge whether a coat-based
 result will transfer without knowing what the coats look like.
-【待补: 品种构成（是否为同一品种或混合群体）、毛色与花纹类型分布、性别与月龄范围、
-      体重区间——须由牧场记录提供】
+【待补: 毛色与花纹类型分布、性别与月龄范围、体重区间——品种已据 Zenodo 记录 13361729 定为
+      96 头西门塔尔公牛，其余须由牧场记录提供】
 
 **Annotation.** Annotation is at the level of identity, not of pixels. Each image is assigned to
 the folder of the animal it depicts, and that folder label is the only supervision used. No
@@ -452,7 +457,7 @@ same accounting, so the table has one version rather than one per arm.
 
 | Quantity | Value |
 | --- | ---: |
-| Identities in the collection | 96 |
+| Identities in the archive | 96 |
 | Identities assigned to training | 【待补】 |
 | Identities assigned to validation | 【待补】 |
 | Identities assigned to test | 【待补】 |
@@ -468,10 +473,11 @@ appear in exactly one set; a query image and a gallery image of the same animal 
 views exported from the same detection. The three identity counts must sum to 96 minus any
 excluded animals, and the exclusions must be reported here rather than silently absorbed.*
 
-<!-- No value in Table 1 has been measured. The identity folders live on the author's GPU server
-     and were not reachable from the environment where this draft was prepared, so neither the
+<!-- No value in Table 1 has been measured. The local copy lives on the author's GPU server and
+     was not reachable from the environment where this draft was prepared, so neither the
      per-identity image counts nor the split assignment have been verified. The 96 identity count
-     is the author's statement about the collection, not a count performed here.
+     is documented by the Zenodo archive records (13364663; 13361729) and the data article
+     (doi 10.1038/s41597-025-04783-6), not counted here.
      Every other cell is unknown and must be filled from the manifest that the measured run
      actually used. See paper/evidence-audit.md section 6. -->
 
@@ -484,7 +490,7 @@ thing to fix before the measured runs.
 <!-- src/data.py build_split_rows() iterates per identity and splits that identity's images
      across train/gallery/query; src/aggregate.py build_seed_manifest() delegates to it.
      No identity-holdout path and no "val" split exist in the code (SPLITS = train/gallery/query).
-     See paper/evidence-audit.md section 13. -->
+     See paper/evidence-audit.md section 8. -->
 【待补: 实现身份隔离划分的代码路径，并在清单层面验证三个集合的身份编号互不相交】
 
 Because the study involves only overhead observation of animals in their normal environment, with
@@ -1040,13 +1046,15 @@ deployments, but a reader should not interpret a rank-5 figure as if it were a r
 Several limitations bound what can be concluded, and they are stated here rather than left for a
 reader to infer.
 
-*Scale and breed.* The study uses 96 cattle identities from a single herd. Ninety-six identities
-is a small enrolment by the standards of person re-identification, and rank-1 on a 96-way problem
-is not directly comparable to rank-1 on a 1000-way problem. Breed composition and coat-pattern
-contrast govern how much identity information the dorsal coat actually carries
-【待补: 品种构成与毛色描述】; breeds with low-contrast or seasonally changing coats present a
-harder problem that this dataset cannot address, and we do not assume that a figure obtained here
-transfers to them.
+*Scale and breed.* The study uses 96 Simmental beef cattle from a single herd, imaged at one site.
+Ninety-six identities is a small enrolment by the standards of person re-identification, and rank-1
+on a 96-way problem is not directly comparable to rank-1 on a 1000-way problem. Simmental cattle
+are a high-contrast, patterned breed, which is favourable for coat-based identification; breeds with
+low-contrast or seasonally changing coats present a harder problem that this archive cannot address,
+and we do not assume that a figure obtained here transfers to them. The sex and age composition of
+the herd
+【待补: 性别与月龄范围、体重区间——须由牧场记录或数据文章提供】 also bounds the population to
+which these results apply.
 
 *Single site.* All imagery comes from one farm. The transfer question raised in Section 5.2 — does
 the model survive a change of premises — is not answered by a single-site experiment, and the
@@ -1170,16 +1178,19 @@ Technology Special Project of Henan Province (No. 221100210600).
 
 <!-- Funding numbers as stated in README.md:340-342. -->
 
-【待补: 致谢——如影像采集由第三方或合作牧场协助完成，须在此致谢并说明其角色；
-      若无，删除本段】
+The authors gratefully acknowledge Yaowu Wang and colleagues, who acquired the UAV imagery and
+released it openly, together with the accompanying identification code and logs, under CC BY 4.0.
+This study analyses that release; it did not collect the imagery.
 
 ## Data availability
 
-The UAV RGB imagery analysed in this study was acquired by the authors and is not publicly
-deposited. The dataset comprises 96 cattle identities, one image folder per animal, and is
-available from the corresponding author on reasonable request.
-【待补: 数据共享声明——须确认是否可公开、适用何种许可、以及在何处可获取；
-      若期刊要求公开存档，须给出存储库标识符。当前按"作者处可申请获取"表述。】
+The imagery analysed in this study is publicly available from Zenodo under CC BY 4.0: Wang, Y.,
+2024. Dataset for cattle growth monitoring in PLF using UAV-based LiDAR.
+https://doi.org/10.5281/zenodo.13364663. The dataset comprises 96 Simmental beef cattle imaged from
+unmanned aerial vehicles, released together with the accompanying data article (Wang et al., 2025b). The accompanying code, results and logs for the coat-pattern
+identification work are available as https://doi.org/10.5281/zenodo.13361729. A local copy of the
+archive, organised as one directory per identity, is held on the authors' GPU server at
+`/home/iadi/UAV-basedData/RGB-data/individaulsByIds`; no additional data were generated.
 
 The reference implementation of the protocol described in this paper, including the paired-crop
 manifest construction, the three backbones, the shared ArcFace objective, the retrieval metrics and
@@ -1296,9 +1307,13 @@ in Agriculture 206, 107687. https://doi.org/10.1016/j.compag.2023.107687
 Wang, Y., 2024. Dataset for cattle growth monitoring in PLF using UAV-based LiDAR. Zenodo.
 https://doi.org/10.5281/zenodo.13364663
 
-Wang, Y., Mücher, S., Wang, K., Wang, W., Kooistra, L., 2025. Deep metric learning for individual
+Wang, Y., Mücher, S., Wang, K., Wang, W., Kooistra, L., 2025a. Deep metric learning for individual
 cattle identification using coat patterns: Proposal for a best practice. Computers and Electronics
 in Agriculture 238, 110754. https://doi.org/10.1016/j.compag.2025.110754
+
+Wang, Y., Kooistra, L., Mücher, S., Wang, W., 2025b. Integrated unmanned aerial vehicle-based LiDAR
+and RGB data for individual cattle growth monitoring in precision livestock farming. Scientific
+Data 12, 1318. https://doi.org/10.1038/s41597-025-04783-6
 
 Yan, J., Tetila, E.C., Zhao, L., Gonçalves, R.C., Castanheiro, L.F., Valem, L.P., Barbedo, J.G.A.,
 2026. Deep learning-based UAV framework for automated morphological and growth analysis of feedlot

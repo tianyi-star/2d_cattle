@@ -1,7 +1,7 @@
 # Mutong: UAV-based Individual Cattle Identification
 
 [![ORCID](https://img.shields.io/badge/ORCID-0000--0003--1167--621X-A6CE39)](https://orcid.org/0000-0003-1167-621X)
-[![Data](https://img.shields.io/badge/data-private%20%2F%20on%20request-lightgrey)](README.md#dataset)
+[![Dataset](https://zenodo.org/badge/DOI/10.5281/zenodo.13364663.svg)](https://doi.org/10.5281/zenodo.13364663)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB)](requirements.txt)
 
 **Tianyi Ma**, Zhengzhou University  
@@ -9,7 +9,7 @@ ORCID: [0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · GitHub: [
 
 ## Abstract
 
-Mutong provides a controlled comparison of individual cattle re-identification from low-altitude unmanned aerial vehicle (UAV) RGB imagery of the dorsal coat pattern, on a private collection of 96 cattle identities. Three embedding backbones—a compact convolutional trunk (called YOLO-ReID for historical reasons, though it is not a YOLO network), a task-pruned Vision Transformer, and a ResNet trunk standing in for the coat-pattern metric-learning line of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Evaluation is on an identity-disjoint partition, so no animal appears in more than one of the training, validation and test sets. Rank-1 and Rank-5 retrieval accuracy, together with parameter count and multiply-accumulates (MACs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); the CEA manuscript is [`paper/manuscript-cea.md`](paper/manuscript-cea.md). Measured recognition figures are produced by local training runs and are not embedded in this document.
+Mutong provides a controlled comparison of individual cattle re-identification from low-altitude unmanned aerial vehicle (UAV) RGB imagery of the dorsal coat pattern, using the openly released Zenodo archive of 96 Simmental beef cattle (Wang *et al.*, 2024) held locally. Three embedding backbones—a compact convolutional trunk (called YOLO-ReID for historical reasons, though it is not a YOLO network), a task-pruned Vision Transformer, and a ResNet trunk standing in for the coat-pattern metric-learning line of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Evaluation is on an identity-disjoint partition, so no animal appears in more than one of the training, validation and test sets. Rank-1 and Rank-5 retrieval accuracy, together with parameter count and multiply-accumulates (MACs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); the CEA manuscript is [`paper/manuscript-cea.md`](paper/manuscript-cea.md). Measured recognition figures are produced by local training runs and are not embedded in this document.
 
 ## Method overview
 
@@ -98,28 +98,29 @@ The implementation resides in [`src/arcface.py`](src/arcface.py) (`ArcFaceHead`)
 
 ## Dataset
 
-The imagery analysed in this project is a private UAV RGB collection of 96 cattle
-identities, stored on the GPU server as one directory per animal:
+The imagery analysed in this project is obtained from the Zenodo archive of Wang *et al.*
+(2024), record [`10.5281/zenodo.13364663`](https://doi.org/10.5281/zenodo.13364663) (CC BY 4.0),
+**downloaded and stored locally** on the GPU server as one directory per animal:
 
 ```text
 /home/iadi/UAV-basedData/RGB-data/individaulsByIds/<identity_id>/*.{jpg,png,...}
 ```
 
 Identity directory names are the herd identifiers and are **not contiguous** (they span
-`101`–`328` while numbering 96 animals), so the collection must be described by its identity
-count, never by its identifier range.
+`101`–`328` while numbering 96 animals), so the archive must be described by its identity count,
+never by its identifier range.
 
 | Property | Value |
 | --- | --- |
+| Source | Zenodo `10.5281/zenodo.13364663` (Wang 2024, CC BY 4.0), held locally |
 | Modality | UAV RGB, low-altitude aerial, dorsal aspect |
-| Identities | 96 |
-| Layout | one directory per identity |
-| Publicly available? | **No.** Available from the corresponding author on request. |
-| Capture parameters | altitude, GSD, camera, dates, site — recorded separately; not in this repo |
+| Identities | 96 Simmental male beef cattle (per companion record `10.5281/zenodo.13361729`) |
+| Layout | one directory per identity in the local copy |
+| Publicly available? | **Yes** — Zenodo, CC BY 4.0. The local copy is a convenience, not a separate collection. |
+| Capture parameters | documented in the data article (Wang et al. 2025, *Sci. Data* 12:1318, doi `10.1038/s41597-025-04783-6`); RGB optics to be confirmed |
 
-This collection is **not** the Zenodo release of Wang *et al.* (2024,
-`10.5281/zenodo.13364663`). That release is cited in the paper as related work and is a different
-acquisition; the two happen to contain the same number of identities, so the distinction matters.
+This project applies an identification protocol to that public archive; it does not collect or
+redistribute new imagery.
 
 > **Split requirement.** Identities must be partitioned **disjointly** into train / validation /
 > test — never by shuffling images. Consecutive UAV frames of one animal are near-duplicates, so an
@@ -182,7 +183,7 @@ data/raw/c001_c.jpg,c001,query
 
 ## Installation
 
-1. Point `raw_image_dir` at your UAV identity tree (or `READY/` of per-identity crops). The data is private; see the Dataset section above.
+1. Download `dataShare.zip` from Zenodo (record `10.5281/zenodo.13364663`) and point `raw_image_dir` at your identity tree, or use `READY/` of per-identity crops. See the Dataset section above.
 2. Construct `manifest.csv` with columns `image_path`, `identity_id`, and `split`.
 3. Set `yolo_weights` and `sam_weights` in `configs/path.yaml` when detection and masking are required.
 4. Create a Python 3.10+ environment and install dependencies:
@@ -452,4 +453,4 @@ This work was supported by the Songshan Laboratory (No. 241110210200) and the 
 
 This software is distributed under the Apache License 2.0; see [LICENSE](LICENSE). The copyright notice is `Copyright 2026 Bo, Zhengzhou University / Mutong（牧瞳）`.
 
-The UAV imagery is not distributed with this software and its licensing is independent of the code licence.tware.
+The Zenodo cattle archive remains under CC BY 4.0. That licence attaches to the dataset depositor and does not govern this software.
