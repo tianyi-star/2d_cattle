@@ -671,57 +671,38 @@ selection criterion is therefore not independent of the reported metric. It is a
 to all six cells, so it does not favour one cell over another, but it does mean that the reported
 figures are best-observed rather than single-final-epoch values.
 
-**Compute.** All six cells were trained on a single NVIDIA GeForce RTX 4090 (48 GB). Wall-clock
-training time per cell is given in Table 3, in the row order used throughout this paper
+**Compute.** All six cells are trained on a single NVIDIA GeForce RTX 4090 (48 GB). Wall-clock
+training time per cell will be reported in Table 3, in the row order used throughout this paper
 (convolutional trunk, then Vision Transformer, then ResNet-50; within each backbone the
 mask-purified arm precedes the box arm).
 
 | Backbone | Crop | Training time (min, wall clock) |
 | --- | --- | ---: |
-| Convolutional trunk | $I_{\mathrm{sam}}$ | 20 |
-| Convolutional trunk | $I_{\mathrm{box}}$ | 23 |
-| Vision Transformer | $I_{\mathrm{sam}}$ | 22 |
-| Vision Transformer | $I_{\mathrm{box}}$ | 30 |
-| ResNet-50 | $I_{\mathrm{sam}}$ | 27 |
-| ResNet-50 | $I_{\mathrm{box}}$ | 33 |
+| Convolutional trunk | $I_{\mathrm{sam}}$ | 【待补】 |
+| Convolutional trunk | $I_{\mathrm{box}}$ | 【待补】 |
+| Vision Transformer | $I_{\mathrm{sam}}$ | 【待补】 |
+| Vision Transformer | $I_{\mathrm{box}}$ | 【待补】 |
+| ResNet-50 | $I_{\mathrm{sam}}$ | 【待补】 |
+| ResNet-50 | $I_{\mathrm{box}}$ | 【待补】 |
 
 *Table 3. Wall-clock training time per cell on one RTX 4090 (48 GB), in the cell order used
-throughout this paper and in Table 4. The values are end-to-end training times as recorded,
-supplied by the authors. Within each backbone pair the box arm took longer than the mask-purified
-arm.*
+throughout this paper and in Table 4. Times are pending the identity-disjoint run described in
+Section 3.2.1; they will be recorded from that run and will come from the same run whose retrieval
+metrics populate Table 4, so that cost and accuracy describe one set of experiments rather than
+two.*
 
-<!-- Provenance: six values supplied by the author as wall-clock minutes per cell, in the paper's
-     cell order: 20, 23, 22, 30, 27, 33. Sum = 155 min = 2.58 h for all six cells.
-     The SUM and the PER-EPOCH figures derived below are explicitly labelled as arithmetic on
-     these values and the 1000-epoch budget; neither is presented as a measured quantity. -->
+<!-- TIMES PENDING. The six cells must be trained on the identity-disjoint partition (3.2.1)
+     before these values exist; the reference code does not yet implement that partition, so no
+     run can currently produce a valid figure. Record wall-clock minutes per cell from the
+     completed run, in the cell order above, and do not transcribe figures from any earlier run:
+     a preliminary six-cell run was performed under the old within-identity split and has been
+     discarded as invalid (paper/evidence-audit.md section 8.1). Its timings, cost and metrics are
+     not reproduced anywhere in this manuscript. -->
 
-The six times correspond to the same runs whose retrieval metrics are reported in Table 4, so the
-training cost and the accuracy figures describe one set of experiments rather than two.
-
-Across the six cells this is 155 minutes of wall-clock training, that is 2.58 hours in total.
-
-Dividing each cell's wall-clock time by the 1000-epoch budget gives a per-epoch training time of
-1.20, 1.38, 1.32, 1.80, 1.62 and 1.98 s for the six cells in Table 3 order, or 1.55 s per epoch
-averaged over all six cells. These are derived quantities, obtained by dividing the recorded
-wall-clock times by the epoch count; they are not separately instrumented measurements, and they
-inherit whatever overhead the end-to-end timings contain.
-<!-- DERIVED, NOT MEASURED. Arithmetic shown so a reader can reproduce it:
-       conv-sam  20 min = 1200 s / 1000 = 1.20 s/epoch
-       conv-box  23 min = 1380 s / 1000 = 1.38
-       vit-sam   22 min = 1320 s / 1000 = 1.32
-       vit-box   30 min = 1800 s / 1000 = 1.80
-       res-sam   27 min = 1620 s / 1000 = 1.62
-       res-box   33 min = 1980 s / 1000 = 1.98
-       sum 155 min = 9300 s; 9300 / (6 cells x 1000 epochs) = 1.55 s/epoch.
-     Note these divide the whole wall-clock time, including data loading and the five periodic
-     rank-1/rank-5 evaluations at epochs 200/400/600/800/1000, by 1000, so they are an upper
-     bound on pure forward/backward time. -->
-
-The compute used for this study cost 980 CNY.
-<!-- Author-supplied total. Deliberately no breakdown: the author's statement does not say whether
-     it covers GPU rental, electricity, storage or platform overhead, so none is asserted here.
-     If the author later supplies a breakdown, add it; do not infer one from the wall-clock total
-     and an assumed hourly rate. -->
+The compute cost of this study will be reported once the identity-disjoint run has completed.
+<!-- COST PENDING. A total in CNY is to be supplied for the reported run. Do not carry over any
+     figure from the discarded preliminary run, and do not derive a cost from these timings and an
+     assumed rate. -->
 
 The six cells are produced by a single orchestrating script rather than by hand, so that the
 shared settings cannot drift between cells. `scripts/run_all_cells.sh` accepts a data root, a seed
@@ -858,13 +839,14 @@ evaluation output so that a reported cell can be matched to the architecture tha
 
 ### 4.1 Retrieval performance of the six cells
 
-Table 4 reports rank-1 and rank-5 for every combination of crop policy and backbone. The cells in
-a row share a backbone and differ only in the crop; the cells in a column share a crop and differ
-only in the network. Every figure is measured on the held-out test identities, which were seen
-neither in training nor in validation. Training time and backbone cost are reported separately —
-wall-clock training time per cell in Table 3 and the inference cost of each backbone in Table 5 —
-because a cell's training time is a property of the run rather than a retrieval result, and mixing
-the two in one table would obscure which entries are measurements of recognition performance.
+Table 4 will report rank-1 and rank-5 for every combination of crop policy and backbone. The cells
+in a row share a backbone and differ only in the crop; the cells in a column share a crop and
+differ only in the network. Every figure will be measured on the held-out test identities, which
+are seen neither in training nor in validation. Training time and backbone cost are reported
+separately — wall-clock training time per cell in Table 3 and the inference cost of each backbone in
+Table 5 — because a cell's training time is a property of the run rather than a retrieval result,
+and mixing the two in one table would obscure which entries are measurements of recognition
+performance.
 
 | Backbone | Crop | Rank-1 | Rank-5 | $\Delta_{\mathrm{SAM}}$ (rank-1) |
 | --- | --- | ---: | ---: | ---: |
