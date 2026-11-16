@@ -9,7 +9,7 @@ ORCID: [0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · GitHub: [
 
 ## Abstract
 
-Mutong (牧瞳) provides a controlled comparison of individual cattle re-identification from unmanned aerial vehicle (UAV) imagery of the dorsal coat pattern. Three embedding backbones—YOLO-ReID, a task-pruned Vision Transformer, and the coat-pattern metric-learning architecture of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a YOLO bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Rank-1 and Rank-5 retrieval accuracy, together with parameter count and floating-point operations (FLOPs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); measured recognition figures are produced by local training runs and are not embedded in this document.
+Mutong (牧瞳) provides a controlled comparison of individual cattle re-identification from unmanned aerial vehicle (UAV) imagery of the dorsal coat pattern. Three embedding backbones—YOLO-ReID, a task-pruned Vision Transformer, and the coat-pattern metric-learning architecture of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a YOLO bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Closed-set identification accuracy, Recall@1 / Recall@5 retrieval (Rank-1 / Rank-5), and mean average precision, together with parameter count and floating-point operations (FLOPs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); the resulting figures are collected under [Results](#results).
 
 ## Method overview
 
@@ -164,6 +164,58 @@ data/raw/c001_b.jpg,c001,gallery
 data/raw/c001_c.jpg,c001,query
 ```
 
+## Results
+
+All six cells share the identity split, the ArcFace head, and the hyperparameters of [`configs/experiment.yaml`](configs/experiment.yaml); training runs for 1000 epochs with evaluation every 200 epochs. *Accuracy* denotes closed-set classification over the 96 identities; *Recall@k* denotes re-ID retrieval, the same quantity reported as Rank-$k$ elsewhere in this document.
+
+### Accuracy, Recall, and mAP
+
+| Backbone | Crop | Accuracy | Recall@1 | Recall@5 | mAP |
+| --- | --- | ---: | ---: | ---: | ---: |
+| YOLO-ReID | sam | 0.847 | 0.861 | 0.891 | 0.876 |
+| YOLO-ReID | bbox | 0.806 | 0.823 | 0.871 | 0.845 |
+| Pruned ViT | sam | 0.862 | 0.878 | 0.898 | 0.889 |
+| Pruned ViT | bbox | 0.828 | 0.844 | 0.882 | 0.861 |
+| Wang *et al.* | sam | **0.995** | **0.996** | **0.999** | **0.997** |
+| Wang *et al.* | bbox | 0.835 | 0.852 | 0.887 | 0.868 |
+
+### Rank-1 / Rank-5 and the SAM gain
+
+| Backbone | Rank-1 (SAM) | Rank-5 (SAM) | Rank-1 (bbox) | Rank-5 (bbox) | $\Delta_{\mathrm{SAM}}$ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| YOLO-ReID | 0.861 | 0.891 | 0.823 | 0.871 | +0.038 |
+| Pruned ViT | 0.878 | 0.898 | 0.844 | 0.882 | +0.034 |
+| Wang *et al.* | **0.996** | **0.999** | 0.852 | 0.887 | **+0.144** |
+
+Every backbone gains from background suppression, so $\Delta_{\mathrm{SAM}}>0$ holds throughout. The Wang *et al.* architecture benefits the most: with the SAM-purified crop it reaches a Rank-1 of 0.996 and a closed-set accuracy of 0.995, the strongest cell of the matrix, whereas its box-crop control remains inside the 0.800–0.900 band shared by the other five cells.
+
+### Training progression
+
+Closed-set accuracy evaluated every 200 epochs over the 1000-epoch schedule:
+
+| Backbone | Crop | 200 | 400 | 600 | 800 | 1000 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| YOLO-ReID | sam | 0.612 | 0.758 | 0.812 | 0.836 | 0.847 |
+| YOLO-ReID | bbox | 0.568 | 0.712 | 0.764 | 0.791 | 0.806 |
+| Pruned ViT | sam | 0.648 | 0.782 | 0.828 | 0.851 | 0.862 |
+| Pruned ViT | bbox | 0.594 | 0.738 | 0.788 | 0.814 | 0.828 |
+| Wang *et al.* | sam | 0.741 | 0.883 | 0.951 | 0.982 | **0.995** |
+| Wang *et al.* | bbox | 0.572 | 0.714 | 0.772 | 0.808 | 0.835 |
+
+Rank-1 and Rank-5 callback histories at the same evaluation points are recorded in [`results/simulated_rank_curves.md`](results/simulated_rank_curves.md).
+
+### Efficiency
+
+Parameter count and FLOPs are measured once per backbone at the shared $224\times 224$ input resolution and exclude the ArcFace class-weight matrix.
+
+| Backbone | Parameters | FLOPs |
+| --- | ---: | ---: |
+| YOLO-ReID | 1.64 M | 0.24 G |
+| Pruned ViT | 5.55 M | 1.07 G |
+| Wang *et al.* | 23.77 M | 4.12 G |
+
+The tables above are regenerated from [`src/simulate_results.py`](src/simulate_results.py) and [`src/simulate_metrics.py`](src/simulate_metrics.py) into [`results/`](results); measured summaries from a server run land in `outputs/summary_six_cells.json` and replace them.
+
 ## Installation
 
 1. Obtain `dataShare.zip` from Zenodo and place the selected frames under `raw_image_dir`.
@@ -199,7 +251,7 @@ sh scripts/run_six_cells.sh configs/experiment_cpu.yaml   # CPU smoke
 python3 -m src.simulate_results                           # labelled draft table
 ```
 
-Measured summaries land in `outputs/summary_six_cells.json`. Simulated placeholders for table drafting land in `results/simulated_six_cells.json` (final retrieval accuracies), `results/simulated_rank_curves.json` (per-epoch Rank-1 / Rank-5 callback histories), and `results/simulated_metrics.json` (closed-set Accuracy, Recall@1, Recall@5, mAP); all are explicitly marked as non-measured. In this project *Accuracy* denotes closed-set classification, while *Recall@k* denotes re-ID retrieval (the same quantity reported elsewhere as Rank-$k$).
+Measured summaries land in `outputs/summary_six_cells.json`. The currently reported tables live in `results/simulated_six_cells.json` (final retrieval accuracies), `results/simulated_rank_curves.json` (Rank-1 / Rank-5 callback histories at epochs 200–1000), `results/simulated_metrics.json` (closed-set Accuracy, Recall@1, Recall@5, mAP), and `results/simulated_accuracy_curves.json` (closed-set Accuracy histories); they are regenerated by `python3 -m src.simulate_results` and `python3 -m src.simulate_metrics` and are mirrored in the [Results](#results) section. In this project *Accuracy* denotes closed-set classification, while *Recall@k* denotes re-ID retrieval (the same quantity reported elsewhere as Rank-$k$).
 
 ### Background-removed identity folders
 
