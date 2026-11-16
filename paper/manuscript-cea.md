@@ -10,7 +10,7 @@ Tianyi Ma^a,^\*
 
 ## Abstract
 
-Individual identification from imagery lets a herd be managed as animals rather than as a group. Wang et al. (2025a) showed that dorsal coat pattern supports this task, and they released a deep-metric-learning practice built on an open UAV-RGB collection of 96 cattle. This study uses that same UAV-RGB herd. The patches supplied to every experiment were cropped in advance with a Segment Anything mask of the back coat. No localization stage is part of the pipeline. Three embedding networks are trained under one ArcFace objective and one identity-disjoint partition, so that a correct match cannot be a near-duplicate frame of an animal already seen in training. A further group adds farm-aware optimal dataset selection (F-ODS) and farm-knowledge-guided self-supervised dynamic learning. Rank-1, rank-5, closed-set accuracy and mean average precision are pending the rerun on iadi-gpu2.
+Individual identification from imagery lets a herd be managed as animals rather than as a group. Wang et al. (2025a) showed that dorsal coat pattern supports this task, and they released a deep-metric-learning practice built on an open UAV-RGB collection of 96 cattle. This study uses that same UAV-RGB herd. The patches supplied to every experiment were cropped in advance with a Segment Anything mask of the back coat. No localization stage is part of the pipeline. Three embedding networks are trained under one ArcFace objective and one identity-disjoint partition, so that a correct match cannot be a near-duplicate frame of an animal already seen in training. A further group adds farm-aware optimal dataset selection (F-ODS) and farm-knowledge-guided self-supervised dynamic learning. Rank-1, rank-5, closed-set accuracy and mean average precision are pending the rerun on NVIDIA GeForce RTX 4090(48GB).
 
 **Keywords:** cattle identification; coat pattern; unmanned aerial vehicle; ArcFace; identity-disjoint evaluation
 
@@ -20,7 +20,7 @@ Precision livestock farming needs a record that stays attached to one animal. Ea
 
 Wang et al. (2025a) treated that cue directly. They trained a deep metric learner on the open UAV-RGB set of 96 Simmental males and checked it on a ground-RGB set of the same herd and on an external Holstein set. Their published figures were obtained under their mining objective and their own split. They are not results of the protocol below.
 
-This paper asks a narrower question on the same UAV-RGB images. The images are already SAM-pre-cropped, so the comparison does not include a detector or a second crop of the original frame. Three networks that differ in capacity share the loss, the resolution and an identity-disjoint split. F-ODS and a quality-gated self-training stage are then added as a separate group. All recognition numbers are pending the rerun on iadi-gpu2. No figure from an image-level split is used.
+This paper asks a narrower question on the same UAV-RGB images. The images are already SAM-pre-cropped, so the comparison does not include a detector or a second crop of the original frame. Three networks that differ in capacity share the loss, the resolution and an identity-disjoint split. F-ODS and a quality-gated self-training stage are then added as a separate group. All recognition numbers are pending the rerun on NVIDIA GeForce RTX 4090(48GB). No figure from an image-level split is used.
 
 ## 2. Relation to coat-pattern identification
 
@@ -45,7 +45,7 @@ The present experiment has two blocks, both scored on the same test identities.
 
 ### 3.2 Data acquisition
 
-The images are the UAV-RGB subset of the 96-individual herd described by Wang et al. (2025a): semi-free-range Simmental male beef cattle, the same animals in their UAV-RGB and ground-RGB collections. This study uses the UAV-RGB collection only. The files are the public archive of Wang (2024), https://doi.org/10.5281/zenodo.13364663, released under CC BY 4.0. A working copy is held on iadi-gpu2.
+The images are the UAV-RGB subset of the 96-individual herd described by Wang et al. (2025a): semi-free-range Simmental male beef cattle, the same animals in their UAV-RGB and ground-RGB collections. This study uses the UAV-RGB collection only. The files are the public archive of Wang (2024), https://doi.org/10.5281/zenodo.13364663, released under CC BY 4.0. A working copy is held on NVIDIA GeForce RTX 4090(48GB).
 
 Flight altitude, ground sampling distance and camera metadata are reported by Wang et al. (2025a). They are not repeated here, and no sensor or flight figure is introduced in this manuscript. Breed, sex and herd size are taken from that paper: 96 Simmental males.
 
@@ -55,7 +55,7 @@ Consecutive UAV frames of one animal are near-duplicates. An image-level split w
 
 Identity identifiers are sorted and shuffled with a fixed seed. Whole animals are then assigned at the proportions two thirds, one sixth and one sixth, by largest remainder. An animal enters the test set only if it has at least two patches, one for the gallery and one for the query. Gallery and query are both drawn from the test animals. Validation animals are used to choose F-ODS coefficients, the dynamic-learning gates and the checkpoint. They are not used as test queries.
 
-Before training or evaluation, the three identity sets are checked for overlap. Any shared identity aborts the run. The test set is read only at final evaluation. Counts of identities and patches in each set, and any animal excluded by the two-patch rule, are pending; they will be copied from the manifest of the iadi-gpu2 rerun. Results from any earlier within-identity split are discarded and are not reported.
+Before training or evaluation, the three identity sets are checked for overlap. Any shared identity aborts the run. The test set is read only at final evaluation. Counts of identities and patches in each set, and any animal excluded by the two-patch rule, are pending; they will be copied from the manifest of the NVIDIA GeForce RTX 4090(48GB) rerun. Results from any earlier within-identity split are discarded and are not reported.
 
 ### 3.4 Recognition variants
 
@@ -75,7 +75,7 @@ $$\ell_i = -\log \frac{e^{s\cos(\theta_{y_i}+m)}}{e^{s\cos(\theta_{y_i}+m)}+\sum
 
 The constants $s = 64$ and $m = 0.5$ are shared and are not tuned per variant (Deng et al., 2019). On the three-variant comparison each patch has weight one. The F-ODS arm replaces that weight by the quality $Q$ of Section 3.6 and does not change the logits.
 
-Training uses Adam, learning rate $10^{-4}$, weight decay $10^{-4}$, batch size 8 and 1000 epochs, with no schedule and no early stopping. Augmentation is resizing, horizontal reflection and mild colour jitter. Metrics are computed every 200 epochs, at epochs 200, 400, 600, 800 and 1000. The checkpoint with the best rank-1 on the validation identities is the one scored on the test identities. The rerun is on iadi-gpu2. Wall-clock time is pending.
+Training uses Adam, learning rate $10^{-4}$, weight decay $10^{-4}$, batch size 8 and 1000 epochs, with no schedule and no early stopping. Augmentation is resizing, horizontal reflection and mild colour jitter. Metrics are computed every 200 epochs, at epochs 200, 400, 600, 800 and 1000. The checkpoint with the best rank-1 on the validation identities is the one scored on the test identities. The rerun is on NVIDIA GeForce RTX 4090(48GB). Wall-clock time is pending.
 
 Closed-set rank-$k$ is the fraction of test queries whose true identity is among the $k$ nearest distinct gallery identities, by cosine similarity. Closed-set accuracy is rank-1 under that ranking. Mean average precision is the mean, over test queries, of the average precision of the same ranking. Parameter and multiply–accumulate counts are taken on $\phi_\theta$ at $224 \times 224$, excluding the ArcFace matrix, and are pending with the recognition metrics.
 
@@ -143,13 +143,13 @@ Both gates are set on the validation identities before the test identities are r
 
 ### 3.8 Stages not implemented
 
-**In the present experiment, measurements pending on iadi-gpu2.** The three SAM-fed variants with uniform weights. F-ODS, including $Q$, the selection objective, $(N^{\star},m^{\star})$ and the weight $w_i=Q(x_i)$. Farm-knowledge-guided dynamic learning, including the two gates. These rows are the tables in Section 4. A row in the protocol is not a measured result.
+**In the present experiment, measurements pending on NVIDIA GeForce RTX 4090(48GB).** The three SAM-fed variants with uniform weights. F-ODS, including $Q$, the selection objective, $(N^{\star},m^{\star})$ and the weight $w_i=Q(x_i)$. Farm-knowledge-guided dynamic learning, including the two gates. These rows are the tables in Section 4. A row in the protocol is not a measured result.
 
 **Not in this study.** A localization stage or a second crop of the original frame. Inputs are already SAM patches, so no such arm is trained. Pruning by embedding discriminability. The transformer uses weight magnitude; the geometry criterion is future work and has no row. Any image-level or within-identity split. That partition is excluded, not deferred. Published scores from Wang et al. (2025a). They were produced under a different objective and are not written into Section 4.
 
 ## 4. Results
 
-No cell below has been filled. Each entry waits on the identity-disjoint rerun on iadi-gpu2. Placeholder curves and tables from earlier drafts are not a source.
+No cell below has been filled. Each entry waits on the identity-disjoint rerun on NVIDIA GeForce RTX 4090(48GB). Placeholder curves and tables from earlier drafts are not a source.
 
 ### 4.1 Three SAM-fed variants
 
@@ -161,7 +161,7 @@ Table 1 is the uniform-weight comparison. Table 2 is closed-set accuracy at the 
 | Pruned Vision Transformer | pending | pending | pending | pending | pending | pending |
 | ResNet-50 | pending | pending | pending | pending | pending | pending |
 
-*Table 1. Three SAM-fed variants on the identity-disjoint test identities. Uniform weights, no F-ODS, no dynamic learning. Pending the rerun on iadi-gpu2.*
+*Table 1. Three SAM-fed variants on the identity-disjoint test identities. Uniform weights, no F-ODS, no dynamic learning. Pending the rerun on NVIDIA GeForce RTX 4090(48GB).*
 
 | Variant | 200 | 400 | 600 | 800 | 1000 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -169,7 +169,7 @@ Table 1 is the uniform-weight comparison. Table 2 is closed-set accuracy at the 
 | Pruned Vision Transformer | pending | pending | pending | pending | pending |
 | ResNet-50 | pending | pending | pending | pending | pending |
 
-*Table 2. Closed-set accuracy at epochs 200, 400, 600, 800 and 1000. Pending the rerun on iadi-gpu2.*
+*Table 2. Closed-set accuracy at epochs 200, 400, 600, 800 and 1000. Pending the rerun on NVIDIA GeForce RTX 4090(48GB).*
 
 | Variant | Wall-clock training time (min) |
 | --- | ---: |
@@ -177,7 +177,7 @@ Table 1 is the uniform-weight comparison. Table 2 is closed-set accuracy at the 
 | Pruned Vision Transformer | pending |
 | ResNet-50 | pending |
 
-*Table 3. Wall-clock minutes on iadi-gpu2 for the three runs in Table 1. Pending.*
+*Table 3. Wall-clock minutes on NVIDIA GeForce RTX 4090(48GB) for the three runs in Table 1. Pending.*
 
 ### 4.2 F-ODS and dynamic learning
 
@@ -198,7 +198,7 @@ Table 4 crosses the three variants with four training pools. “Uniform” repea
 | F-ODS and dynamic learning | Pruned Vision Transformer | pending | pending | pending | pending |
 | F-ODS and dynamic learning | ResNet-50 | pending | pending | pending | pending |
 
-*Table 4. F-ODS and farm-knowledge-guided dynamic learning. Pending the rerun on iadi-gpu2. If the identity-safe unlabeled pool is empty, the dynamic-learning rows are reported as not run rather than filled.*
+*Table 4. F-ODS and farm-knowledge-guided dynamic learning. Pending the rerun on NVIDIA GeForce RTX 4090(48GB). If the identity-safe unlabeled pool is empty, the dynamic-learning rows are reported as not run rather than filled.*
 
 Also pending for this group: $(N^{\star},m^{\star})$, the five quality weights, $\lambda$, $\mu$, the gates $\tau_c$ and $\tau_q$, the refresh interval $R$, the number of admitted patches, and the wall-clock time of each row.
 
@@ -210,7 +210,7 @@ Figure 1 will show one identity-disjoint test query and the gallery patch ranked
 | --- | --- | --- |
 | pending: query and top-ranked gallery patch | pending: query and top-ranked gallery patch | pending: query and top-ranked gallery patch |
 
-*Figure 1. Qualitative comparison of the three SAM-fed variants. Pending export from the iadi-gpu2 rerun.*
+*Figure 1. Qualitative comparison of the three SAM-fed variants. Pending export from the NVIDIA GeForce RTX 4090(48GB) rerun.*
 
 ## 5. Discussion
 
@@ -222,7 +222,7 @@ Wang et al. (2025a) remain the reference for what coat-pattern metric learning a
 
 ## 6. Conclusions
 
-On the UAV-RGB herd of Wang et al. (2025a), three embeddings can be compared fairly when the coat patches are fixed in advance, the loss is shared and the split keeps identities apart. F-ODS and quality-gated self-training are specified on top of that comparison. The measurements themselves are pending the rerun on iadi-gpu2.
+On the UAV-RGB herd of Wang et al. (2025a), three embeddings can be compared fairly when the coat patches are fixed in advance, the loss is shared and the split keeps identities apart. F-ODS and quality-gated self-training are specified on top of that comparison. The measurements themselves are pending the rerun on NVIDIA GeForce RTX 4090(48GB).
 
 ## CRediT authorship contribution statement
 
