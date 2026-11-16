@@ -21,8 +21,13 @@ _EXPORTS = {
     "WangMetricArcFace": ("src.models", "WangMetricArcFace"),
     "YoloArcFace": ("src.models", "YoloArcFace"),
     "build_model": ("src.models", "build_model"),
+    "units_to_prune": ("src.models", "units_to_prune"),
+    "zero_pruned_units": ("src.models", "zero_pruned_units"),
     "metric_names": ("src.evaluate", "metric_names"),
     "rank1_gain": ("src.evaluate", "rank1_gain"),
+    "SamMasker": ("src.sam_mask", "SamMasker"),
+    "SamConfig": ("src.sam_mask", "SamConfig"),
+    "purify_crop": ("src.sam_mask", "purify_crop"),
 }
 
 __all__ = sorted(_EXPORTS)

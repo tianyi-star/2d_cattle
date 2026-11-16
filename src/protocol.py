@@ -18,12 +18,17 @@ DISPLAY_NAMES = {
 }
 
 MODEL_ROLES = {
-    "yolo_arcface": "CNN baseline: a YOLO backbone with the shared ArcFace head.",
+    "yolo_arcface": (
+        "CNN baseline: a compact strided-convolution trunk (conv-BN-SiLU) with the "
+        "shared ArcFace head. Despite the name, it is not a YOLO network and shares "
+        "no weights with the detector."
+    ),
     "pruned_vit_arcface": "Proposed model: a pruned Vision Transformer with the shared ArcFace head.",
     "wang_metric": (
-        "Baseline interface for the coat-pattern metric-learning setup of "
-        "Wang et al., Computers and Electronics in Agriculture (2025), "
-        "trained here with the same ArcFace loss."
+        "Stand-in for the coat-pattern metric-learning line of "
+        "Wang et al., Computers and Electronics in Agriculture (2025): a ResNet "
+        "trunk with random initialisation, trained here with the same ArcFace loss. "
+        "Not a reproduction of their architecture or objective."
     ),
 }
 

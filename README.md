@@ -9,7 +9,7 @@ ORCID: [0000-0003-1167-621X](https://orcid.org/0000-0003-1167-621X) · GitHub: [
 
 ## Abstract
 
-Mutong provides a controlled comparison of individual cattle re-identification from unmanned aerial vehicle (UAV) imagery of the dorsal coat pattern. Three embedding backbones—YOLO-ReID, a task-pruned Vision Transformer, and the coat-pattern metric-learning architecture of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a YOLO bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Rank-1 and Rank-5 retrieval accuracy, together with parameter count and floating-point operations (FLOPs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); measured recognition figures are produced by local training runs and are not embedded in this document.
+Mutong provides a controlled comparison of individual cattle re-identification from low-altitude unmanned aerial vehicle (UAV) RGB imagery of the dorsal coat pattern, using the openly released Zenodo archive of 96 Simmental beef cattle (Wang *et al.*, 2024) held locally. Three embedding backbones—a compact convolutional trunk (called YOLO-ReID for historical reasons, though it is not a YOLO network), a task-pruned Vision Transformer, and a ResNet trunk standing in for the coat-pattern metric-learning line of Wang *et al.*—are trained under a shared ArcFace objective. Each backbone is evaluated on two paired crops derived from the same detection: a Segment Anything Model (SAM) mask that retains the back-coat region, and a bounding-box crop that omits SAM. The resulting $2\times 3$ design isolates the contribution of background suppression from that of network architecture. Evaluation is on an identity-disjoint partition, so no animal appears in more than one of the training, validation and test sets. Rank-1 and Rank-5 retrieval accuracy, together with parameter count and multiply-accumulates (MACs), constitute the reporting protocol. A method and experimental protocol draft is included in [`paper/method.tex`](paper/method.tex); the CEA manuscript is [`paper/manuscript-cea.md`](paper/manuscript-cea.md). Measured recognition figures are produced by local training runs and are not embedded in this document.
 
 ## Method overview
 
@@ -20,23 +20,23 @@ flowchart TD
     B --> N[YOLO box crop without SAM]
     C --> D[Purified coat-pattern image I_sam]
     N --> P[Box crop with residual background I_box]
-    D --> E[F-ODS support selection]
-    P --> Q[F-ODS support selection]
-    E --> F[Fixed train / gallery / query split]
-    Q --> R[Same identity split as left arm]
-    F --> G[YOLO-ReID]
+    D --> E[Seeded train / gallery / query split]
+    P --> Q[Same identity split as left arm]
+    E --> F[One manifest per seed]
+    Q --> R[Same manifest rows]
+    F --> G[Convolutional trunk]
     F --> H[Pruned ViT]
-    F --> I[Wang et al. baseline]
-    R --> G2[YOLO-ReID]
+    F --> I[ResNet trunk]
+    R --> G2[Convolutional trunk]
     R --> H2[Pruned ViT]
-    R --> I2[Wang et al. baseline]
+    R --> I2[ResNet trunk]
 
     subgraph EVAL["Evaluation"]
         direction TB
         J["Cosine retrieval on I_sam → Rank-1 / Rank-5"]
         K["Cosine retrieval on I_box → Rank-1 / Rank-5"]
         L["Δ_SAM = Rank-1(I_sam) − Rank-1(I_box)"]
-        M["Params / FLOPs once per backbone at shared resolution"]
+        M["Params / MACs once per backbone at shared resolution"]
         J --> L
         K --> L
         L --- M
@@ -46,7 +46,7 @@ flowchart TD
     G2 & H2 & I2 --> K
 ```
 
-Detection precedes the fork. For every UAV frame, a YOLO detector returns an axis-aligned cattle box that is shared by both experimental arms; the arms therefore differ in the retained pixels, not in the animal list. In the SAM arm, that box prompts a Segment Anything Model (SAM) mask of the dorsal coat, and the recogniser receives only the masked crop $I_{\mathrm{sam}}$. Pasture, hard shadow, and limbs that fall outside the mask are excluded. In the control arm, the same box crops the original frame to $I_{\mathrm{box}}$ and SAM is not applied, so background clutter may remain. Farm-aware optimal dataset selection (F-ODS) rebalances the training pool of each arm on its own crop manifest, while the few-shot assignment of identities to `train`, `gallery`, and `query` is held identical across all six cells. At test time, each query embedding is ranked against gallery embeddings by cosine similarity of $\ell_2$-normalised vectors; Rank- $k$ is the fraction of queries whose true identity appears among the $k$ nearest gallery identities. Parameter count and FLOPs are reported once per backbone at the common input resolution and exclude the ArcFace class-weight matrix, whose width scales with the number of training identities rather than with the crop operator.
+Detection precedes the fork. For every UAV frame, a YOLO detector returns an axis-aligned cattle box that is shared by both experimental arms; the arms therefore differ in the retained pixels, not in the animal list. In the SAM arm, that box prompts a Segment Anything Model (SAM) mask of the dorsal coat, and the recogniser receives only the masked crop $I_{\mathrm{sam}}$. Pasture, hard shadow, and limbs that fall outside the mask are excluded. In the control arm, the same box crops the original frame to $I_{\mathrm{box}}$ and SAM is not applied, so background clutter may remain. The seeded assignment of identities to `train`, `gallery`, and `query` is held identical across all six cells. At test time, each query embedding is ranked against gallery embeddings by cosine similarity of $\ell_2$-normalised vectors; Rank- $k$ is the fraction of queries whose true identity appears among the $k$ nearest gallery identities. Parameter count and multiply-accumulates (MACs) are reported once per backbone at the common input resolution and exclude the ArcFace class-weight matrix, whose width scales with the number of training identities rather than with the crop operator.
 
 The primary ablation question is:
 
@@ -69,9 +69,9 @@ The comparison comprises six cells formed by the Cartesian product of crop type 
 
 | Identifier | Role |
 | --- | --- |
-| `yolo_arcface` | Convolutional baseline: a YOLO-style trunk with the shared ArcFace head. |
+| `yolo_arcface` | Convolutional baseline: a compact five-stage conv-BN-SiLU trunk with the shared ArcFace head. Called YOLO-ReID for historical reasons; it is **not** a YOLO network and shares no weights with the detector. |
 | `pruned_vit_arcface` | Proposed recogniser: a Vision Transformer with structured pruning and the shared ArcFace head. |
-| `wang_metric` | Baseline following Wang *et al.* (2025), retrained with the shared ArcFace head so that the loss is not a confounding factor. |
+| `wang_metric` | A ResNet-50 trunk with random initialisation, trained with the shared ArcFace head. It stands in for the coat-pattern metric-learning line of Wang *et al.* (2025); it is **not** a reproduction of their architecture or objective. |
 
 The coat-pattern deep metric learning method of Wang, Mücher, Wang, Wang, and Kooistra [*Computers and Electronics in Agriculture*, 2025](https://doi.org/10.1016/j.compag.2025.110754) supplies the third backbone. Released training artefacts are available as Zenodo record [10.5281/zenodo.13361729](https://doi.org/10.5281/zenodo.13361729); that code is not vendored here. Published figures from Wang *et al.* arise under a different training objective and must not be treated as results of the present protocol.
 
@@ -98,22 +98,39 @@ The implementation resides in [`src/arcface.py`](src/arcface.py) (`ArcFaceHead`)
 
 ## Dataset
 
-The image source is the public UAV cattle archive of Wang *et al.*, Zenodo record [*Dataset for cattle growth monitoring in PLF using UAV-based LiDAR*](https://zenodo.org/records/13364663) ([10.5281/zenodo.13364663](https://doi.org/10.5281/zenodo.13364663), 23 August 2024, CC BY 4.0). The archive contains imagery associated with 96 Simmental beef cattle. This repository neither redistributes the archive nor asserts a fixed internal folder layout. After download, frames are placed under the directory named in `configs/path.yaml` and described by a CSV manifest. All entry scripts read that manifest rather than a hard-coded directory tree.
+The imagery analysed in this project is obtained from the Zenodo archive of Wang *et al.*
+(2024), record [`10.5281/zenodo.13364663`](https://doi.org/10.5281/zenodo.13364663) (CC BY 4.0),
+**downloaded and stored locally** on the GPU server as one directory per animal:
 
-| File | Description | Size | Licence |
-| --- | --- | --- | --- |
-| `dataShare.zip` | UAV cattle archive deposited by Yaowu Wang | 26 486 342 645 bytes | CC BY 4.0 |
-
-```bibtex
-@dataset{wang2024uavlidar,
-  author    = {Wang, Yaowu},
-  title     = {Dataset for cattle growth monitoring in {PLF} using {UAV}-based {LiDAR}},
-  year      = {2024},
-  publisher = {Zenodo},
-  doi       = {10.5281/zenodo.13364663},
-  url       = {https://doi.org/10.5281/zenodo.13364663}
-}
+```text
+/home/iadi/UAV-basedData/RGB-data/individaulsByIds/<identity_id>/*.{jpg,png,...}
 ```
+
+Identity directory names are the herd identifiers and are **not contiguous** (they span
+`101`–`328` while numbering 96 animals), so the archive must be described by its identity count,
+never by its identifier range.
+
+| Property | Value |
+| --- | --- |
+| Source | Zenodo `10.5281/zenodo.13364663` (Wang 2024, CC BY 4.0), held locally |
+| Modality | UAV RGB, low-altitude aerial, dorsal aspect |
+| Identities | 96 Simmental male beef cattle (per companion record `10.5281/zenodo.13361729`) |
+| Layout | one directory per identity in the local copy |
+| Publicly available? | **Yes** — Zenodo, CC BY 4.0. The local copy is a convenience, not a separate collection. |
+| Capture parameters | documented in the data article (Wang et al. 2025, *Sci. Data* 12:1318, doi `10.1038/s41597-025-04783-6`); RGB optics to be confirmed |
+
+This project applies an identification protocol to that public archive; it does not collect or
+redistribute new imagery.
+
+> **Split requirement.** Identities must be partitioned **disjointly** into train / validation /
+> test — never by shuffling images. Consecutive UAV frames of one animal are near-duplicates, so an
+> image-level split lets the model retrieve a memorised frame rather than an animal and inflates
+> rank-1. See `paper/manuscript-cea.md` §3.2.1 for the rationale.
+>
+> **Not yet implemented.** `src/data.py:build_split_rows()` currently shuffles each identity's own
+> images into train/gallery/query, so every identity lands in all three sets, and no `val` split
+> exists (`SPLITS = ("train", "gallery", "query")`). Any rank-1 produced by the current pipeline is
+> inflated. This is tracked as gap item 1 in `paper/evidence-audit.md` §8.
 
 ### Directory layout
 
@@ -166,7 +183,7 @@ data/raw/c001_c.jpg,c001,query
 
 ## Installation
 
-1. Obtain `dataShare.zip` from Zenodo and place the selected frames under `raw_image_dir`.
+1. Download `dataShare.zip` from Zenodo (record `10.5281/zenodo.13364663`) and point `raw_image_dir` at your identity tree, or use `READY/` of per-identity crops. See the Dataset section above.
 2. Construct `manifest.csv` with columns `image_path`, `identity_id`, and `split`.
 3. Set `yolo_weights` and `sam_weights` in `configs/path.yaml` when detection and masking are required.
 4. Create a Python 3.10+ environment and install dependencies:
@@ -191,15 +208,84 @@ Scripts read `configs/path.yaml` and the shared experiment file. Paths may be ov
 
 ### Six-cell run with Rank-1 / Rank-5 callback
 
-Training logs Rank-1 and Rank-5 after every `eval_every` epochs via `RankAccuracyCallback` (`src/callbacks.py`). Histories are written to `outputs/*/rank_callback.json`. To run all six cells on paired synthetic crops (or after pointing manifests at the private server):
+Training logs Rank-1 and Rank-5 after every `eval_every` epochs via `RankAccuracyCallback` (`src/callbacks.py`). Histories are written to `outputs/*/rank_callback.json`. To exercise all six cells on paired synthetic crops (a pipeline check only, never a result):
 
 ```bash
-sh scripts/run_six_cells.sh configs/experiment_cpu.yaml   # CPU smoke
-# sh scripts/run_six_cells.sh configs/experiment.yaml    # server default
-python3 -m src.simulate_results                           # labelled draft table
+sh scripts/run_six_cells.sh configs/experiment_cpu.yaml   # CPU smoke, synthetic images
 ```
 
-Measured summaries land in `outputs/summary_six_cells.json`. Simulated placeholders for table drafting land in `results/simulated_six_cells.json` (final retrieval accuracies), `results/simulated_rank_curves.json` (per-epoch Rank-1 / Rank-5 callback histories), and `results/simulated_metrics.json` (closed-set Accuracy, Recall@1, Recall@5, mAP); all are explicitly marked as non-measured. In this project *Accuracy* denotes closed-set classification, while *Recall@k* denotes re-ID retrieval (the same quantity reported elsewhere as Rank-$k$).
+For **measured** results use the seeded runner; see [Measured six-cell run](#measured-six-cell-run):
+
+```bash
+scripts/run_all_cells.sh --data-root /data/cattle --seeds "0 1 2"
+```
+
+In this project *Accuracy* denotes closed-set classification, while *Recall@k* denotes re-ID retrieval (the same quantity reported elsewhere as Rank-$k$).
+
+### SAM masking
+
+`src/preprocess.py --crop sam` prompts SAM with the detector box only and writes $I_{\mathrm{sam}}=\operatorname{Crop}(I\odot M, B_M)$: the coat pixels, cropped to the tight box of the mask. `--crop bbox` is unchanged — the plain rectangle of the original frame — and never loads SAM.
+
+```bash
+python3 -m src.preprocess \
+  --image-dir /data/uav_frames --manifest /data/manifest.csv \
+  --output-dir /data/patterns --output-manifest /data/pattern_manifest.csv \
+  --yolo-weights /weights/yolo.pt \
+  --sam-weights /weights/sam_vit_b_01ec64.pth \
+  --sam-model-type vit_b \
+  --sam-cache-dir data/sam_mask_cache \
+  --crop sam
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--sam-weights` | Local checkpoint. Required for `--crop sam`; **missing weights raise, they never fall back to the box crop**. |
+| `--sam-model-type` | `vit_h`, `vit_l`, `vit_b` (default, memory-safe) or `vit_t` for MobileSAM. |
+| `--sam-backend` | `auto` (mobile_sam for `vit_t`, else segment_anything), or force `segment_anything` / `mobile_sam` / `ultralytics`. |
+| `--sam-cache-dir` | Mask cache keyed by image id + detection box + segmenter fingerprint. A second pass re-reads a packed `.npz` instead of re-running SAM. |
+| `--sam-min-area-frac` | Reject a mask smaller than this fraction of the box rather than emit an empty crop. |
+| `--sam-single-mask` | Ask for one mask instead of three (faster). |
+
+The segmenter loads on first use, so a `bbox` run never allocates a SAM model.
+
+### Pruned ViT
+
+`pruned_vit_arcface` removes the lowest-magnitude attention heads and MLP hidden channels at `vit_prune_ratio`. Units are **removed from the tensors**, not zeroed, so `count_parameters` and `estimate_flops` both fall; the shape change is what makes the pruning structural. Rounding is half-up with a floor of one unit, so the three heads of `vit_tiny_patch16_224` lose one at ratio 0.25 instead of silently pruning nothing. `src.models.zero_pruned_units` is the in-place zeroing form (used to check the selection, and the literal reading of $\phi^{(-u)}$); it writes through the parameter via `index_put_`.
+
+> **Resolved: paper/code discrepancy on the pruning criterion.** `paper/method.tex` §`sec:pruning` previously specified a discriminability-ratio importance $I(u)=\Delta(\phi)-\Delta(\phi^{(-u)})$ with $\Delta=S_{\mathrm{inter}}/(S_{\mathrm{intra}}+\varepsilon)$, which the code does not implement. The code ranks by **weight magnitude**, and `paper/method.tex` has been rewritten to describe that as the implemented criterion, with the $\Delta$ criterion retained only as an explicitly labelled design direction that was **not evaluated**. `paper/manuscript-cea.md` §3.8 says the same. No result in this repository was produced with the $\Delta$ criterion. The historical note survives as a comment above `_magnitude_scores` in `src/models.py`.
+
+### Measured six-cell run
+
+`scripts/run_all_cells.sh` runs the 2×3 design with seeded splits and writes a timestamped, self-describing results directory.
+
+```bash
+# Prepared mode: two crop trees over the same identities and frames.
+#   /data/cattle/sam/<identity_id>/*.png    purified coat crops
+#   /data/cattle/bbox/<identity_id>/*.png   the same frames as YOLO box crops
+scripts/run_all_cells.sh --data-root /data/cattle --seeds "0 1 2"
+
+# Raw mode: run detection and masking here, then train.
+scripts/run_all_cells.sh --data-mode raw --data-root /data/uav \
+  --yolo-weights /weights/yolo.pt --sam-weights /weights/sam_vit_b_01ec64.pth \
+  --seeds "0 1 2"
+```
+
+Output layout:
+
+```text
+results/six_cells_<mode>_<UTC timestamp>/
+|-- run_config.txt                        seeds, ratios, config, git sha, python, timestamps
+|-- summary_six_cells.json                per-cell mean +/- SD over seeds, plus provenance
+|-- summary_six_cells.md                  the table to paste into the manuscript
+|-- seed_<n>/<crop>/<model>/metrics.json  copies of the measured metrics
+```
+
+What it refuses to do:
+
+* **Overwrite.** The results directory is created exclusively, and the run aborts before writing anything if a target `outputs/seed_*` directory already holds files.
+* **Invent a number.** Every value is read from a `metrics.json` that `src.evaluate` wrote during this run. `src/aggregate.py` rejects a file that is older than the run start, is missing or non-finite, names the wrong crop or model, has an empty gallery or query split, or carries a placeholder/simulated marker.
+* **Report a vacuous $\Delta_{\mathrm{SAM}}.$** Prepared mode needs two distinct arm directories; if `sam/` and `bbox/` resolve to one path it aborts rather than report a structural zero.
+* **Imply significance.** Seeded means and sample SD are reported, and the summary says explicitly when there is only one seed.
 
 ### Background-removed identity folders
 
@@ -210,7 +296,7 @@ sh scripts/prepare_ready.sh /path/to/READY sam
 sh scripts/run_experiment.sh sam
 ```
 
-This command sequence trains and evaluates YOLO-ReID, the pruned ViT, and the Wang *et al.* baseline under the shared ArcFace loss. Metrics are written to `outputs/*/metrics.json` and summarised in `outputs/summary_sam.json`.
+This command sequence trains and evaluates YOLO-ReID, the pruned ViT, and the ResNet Wang *et al.* stand-in under the shared ArcFace loss. Metrics are written to `outputs/*/metrics.json` and summarised in `outputs/summary_sam.json`.
 
 A synthetic generator is provided solely to verify the pipeline in the absence of the archive; its outputs are not scientific results:
 
@@ -241,7 +327,7 @@ sh scripts/train.sh pruned_vit_arcface bbox
 sh scripts/train.sh wang_metric bbox
 ```
 
-3. Evaluate the corresponding cell. Reported fields are Rank-1, Rank-5, parameters, and FLOPs. The SAM gain for a backbone is Rank-1 on the `sam` cell minus Rank-1 on the `bbox` cell.
+3. Evaluate the corresponding cell. Reported fields are Rank-1, Rank-5, parameters, and multiply-accumulates (MACs; `estimate_flops` returns MACs, not FLOPs). The SAM gain for a backbone is Rank-1 on the `sam` cell minus Rank-1 on the `bbox` cell.
 
 ```bash
 sh scripts/evaluate.sh yolo_arcface sam
@@ -259,10 +345,12 @@ Principal components:
 | Module | Responsibility |
 | --- | --- |
 | [`src/preprocess.py`](src/preprocess.py) | Detection, SAM or box cropping, and ingestion of ready identity folders |
-| [`src/models.py`](src/models.py) | Backbone construction and ViT pruning |
+| [`src/sam_mask.py`](src/sam_mask.py) | SAM prompt → mask → purified crop, lazy loading, on-disk mask cache |
+| [`src/models.py`](src/models.py) | Backbone construction and ViT structured pruning |
 | [`src/arcface.py`](src/arcface.py) | Shared ArcFace head |
 | [`src/train.py`](src/train.py) | ArcFace optimisation loop |
 | [`src/evaluate.py`](src/evaluate.py) | Rank-1 / Rank-5 retrieval and efficiency accounting |
+| [`src/aggregate.py`](src/aggregate.py) | Seeded manifests and measured-only aggregation for `run_all_cells.sh` |
 | [`src/data.py`](src/data.py) | Manifest I/O and dataset construction |
 
 ## Repository layout
@@ -284,12 +372,23 @@ Principal components:
 │   ├── preprocess.sh
 │   ├── train.sh
 │   ├── evaluate.sh
-│   └── run_experiment.sh
+│   ├── run_experiment.sh
+│   ├── run_six_cells.sh          synthetic pipeline smoke test
+│   └── run_all_cells.sh          seeded measured run into timestamped results/
+├── tests/
+│   ├── conftest.py
+│   ├── test_sam_masking.py
+│   ├── test_pruning.py
+│   ├── test_runner_and_aggregate.py
+│   ├── test_pipeline_end_to_end.py
+│   └── test_sam_real_weights.py  opt-in, real checkpoint
 └── src/
     ├── protocol.py
     ├── config.py
     ├── data.py
     ├── preprocess.py
+    ├── sam_mask.py
+    ├── aggregate.py
     ├── arcface.py
     ├── models.py
     ├── train.py
@@ -298,6 +397,15 @@ Principal components:
 ```
 
 Generated run directories, local image trees, and checkpoint files are excluded by `.gitignore`.
+
+## Tests
+
+```bash
+python3 -m pytest                                              # CPU, no SAM weights needed
+SAM_WEIGHTS=/w/sam_vit_b_01ec64.pth python3 -m pytest -m slow   # opt-in real-SAM check
+```
+
+The suite needs no GPU and no downloaded checkpoint: the SAM path runs against an injected stub segmenter, and the pruning tests assert on `count_parameters` and on the actual zeroed rows.
 
 ## Citation
 

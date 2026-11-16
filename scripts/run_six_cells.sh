@@ -1,6 +1,11 @@
 #!/bin/sh
-# Train and evaluate all six cells (3 backbones × 2 crops) with Rank-1/5 callbacks.
+# Pipeline smoke test on SYNTHETIC ellipse images. Not a source of results.
+# Trains and evaluates all six cells (3 backbones × 2 crops) with Rank-1/5 callbacks.
 # Usage: scripts/run_six_cells.sh [config_yaml]
+#
+# For measured results on real data, use scripts/run_all_cells.sh instead: it
+# runs seeded, refuses to overwrite, and writes a timestamped results/ directory.
+# Nothing this script prints may be cited as a result (see paper/evidence-audit.md).
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "${ROOT}/scripts/lib.sh"
@@ -85,6 +90,3 @@ for c in cells:
     )
 print(f"wrote {out}")
 PY
-
-# Always refresh the labelled simulated draft table alongside measured results.
-python3 -m src.simulate_results

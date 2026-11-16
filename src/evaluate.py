@@ -180,6 +180,7 @@ def run_evaluation(model_name: str, manifest: str, config_path: str, run_dir: st
         "flops": flops,
         "num_gallery": len(gallery_rows),
         "num_query": len(query_rows),
+        "prune_report": checkpoint.get("prune_report") or {},
         "sam_ablation_question": SAM_ABLATION_QUESTION,
     }
     out_file = run_path / "metrics.json"
