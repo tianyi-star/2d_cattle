@@ -69,9 +69,9 @@ The comparison comprises six cells formed by the Cartesian product of crop type 
 
 | Identifier | Role |
 | --- | --- |
-| `yolo_arcface` | Convolutional baseline: a YOLO-style trunk with the shared ArcFace head. |
+| `yolo_arcface` | Convolutional baseline: a compact five-stage conv-BN-SiLU trunk with the shared ArcFace head. Called YOLO-ReID for historical reasons; it is **not** a YOLO network and shares no weights with the detector. |
 | `pruned_vit_arcface` | Proposed recogniser: a Vision Transformer with structured pruning and the shared ArcFace head. |
-| `wang_metric` | Baseline following Wang *et al.* (2025), retrained with the shared ArcFace head so that the loss is not a confounding factor. |
+| `wang_metric` | A ResNet-50 trunk with random initialisation, trained with the shared ArcFace head. It stands in for the coat-pattern metric-learning line of Wang *et al.* (2025); it is **not** a reproduction of their architecture or objective. |
 
 The coat-pattern deep metric learning method of Wang, Mücher, Wang, Wang, and Kooistra [*Computers and Electronics in Agriculture*, 2025](https://doi.org/10.1016/j.compag.2025.110754) supplies the third backbone. Released training artefacts are available as Zenodo record [10.5281/zenodo.13361729](https://doi.org/10.5281/zenodo.13361729); that code is not vendored here. Published figures from Wang *et al.* arise under a different training objective and must not be treated as results of the present protocol.
 
@@ -279,7 +279,7 @@ sh scripts/prepare_ready.sh /path/to/READY sam
 sh scripts/run_experiment.sh sam
 ```
 
-This command sequence trains and evaluates YOLO-ReID, the pruned ViT, and the Wang *et al.* baseline under the shared ArcFace loss. Metrics are written to `outputs/*/metrics.json` and summarised in `outputs/summary_sam.json`.
+This command sequence trains and evaluates YOLO-ReID, the pruned ViT, and the ResNet Wang *et al.* stand-in under the shared ArcFace loss. Metrics are written to `outputs/*/metrics.json` and summarised in `outputs/summary_sam.json`.
 
 A synthetic generator is provided solely to verify the pipeline in the absence of the archive; its outputs are not scientific results:
 
