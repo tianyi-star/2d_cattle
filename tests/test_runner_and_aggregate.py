@@ -187,24 +187,63 @@ def test_single_seed_summary_says_so_and_has_no_sd(finished_run):
     assert "Single-run point estimates only" in md
 
 
-def test_build_seed_manifest_is_seeded_and_keeps_identities(tiny_dataset, tmp_path):
+def test_build_seed_manifest_is_seeded_and_identity_disjoint_by_default(tiny_dataset, tmp_path):
+    """The default split must hold animals out, not shuffle their images."""
+
+    from src.data import IdentityLeakageError, identity_partitions
+
     first = build_seed_manifest(tiny_dataset["root"], tmp_path / "a.csv", seed=0)
     again = build_seed_manifest(tiny_dataset["root"], tmp_path / "b.csv", seed=0)
-    other = build_seed_manifest(tiny_dataset["root"], tmp_path / "c.csv", seed=7)
 
     assert first == again, "the same seed must reproduce the same split"
     assert (tmp_path / "a.csv").is_file()
+    # The JSON manifest and the Table-1 summary are written beside the CSV.
+    assert (tmp_path / "a.split.json").is_file()
+    assert (tmp_path / "a.table1.md").is_file()
 
-    # Every identity appears in every seed, and no image is duplicated or dropped.
+    # Every image is present exactly once, under the new default.
+    assert len({row["image_path"] for row in first}) == len(first)
+
+    # 6 identities cannot fill a three-way partition with a test split that has
+    # a gallery and a query, so this fixture must ask for fewer identities per
+    # partition; the default 64/16/16 needs many more identities than 6.
+    partitions = identity_partitions(first)
+    assert set(partitions) == {"train", "val", "test"}
+    all_ids = partitions["train"] | partitions["val"] | partitions["test"]
+    assert len(all_ids) == 6
+    assert not (partitions["train"] & partitions["val"])
+    assert not (partitions["train"] & partitions["test"])
+    assert not (partitions["val"] & partitions["test"])
+
+    # Different seeds may reassign animals, but must never leak one.
+    other = build_seed_manifest(tiny_dataset["root"], tmp_path / "c.csv", seed=7)
     for rows in (first, other):
-        assert {row["identity_id"] for row in rows} == {row["identity_id"] for row in first}
-        assert len({row["image_path"] for row in rows}) == len(rows) == len(first)
+        for row in rows:
+            assert row["partition"] in ("train", "val", "test")
+        with pytest.raises(IdentityLeakageError):
+            from src.data import assert_identity_disjoint
 
-    # A different seed may reorder which views land in which split; if the tiny
-    # set happens to produce the same assignment, the row order still differs.
-    assert [(r["image_path"], r["split"]) for r in first] != [
-        (r["image_path"], r["split"]) for r in other
-    ] or [r["image_path"] for r in first] != [r["image_path"] for r in other]
+            assert_identity_disjoint(
+                [dict(row, partition="train") for row in rows]
+                + [dict(rows[0], partition="test")]
+            )
+
+
+def test_build_seed_manifest_legacy_within_mode_is_opt_in(tiny_dataset, tmp_path):
+    """The old behaviour is reachable only by naming it."""
+
+    rows = build_seed_manifest(
+        tiny_dataset["root"], tmp_path / "legacy.csv", seed=0, split_mode="within"
+    )
+    by_identity: dict[str, set[str]] = {}
+    for row in rows:
+        by_identity.setdefault(row["identity_id"], set()).add(row["split"])
+    # Every identity appears in every split: the leak this change removes.
+    assert {row["identity_id"] for row in rows} == set(by_identity)
+    for splits in by_identity.values():
+        assert {"train", "gallery", "query"} <= splits
+    assert all("partition" not in row for row in rows)
+    assert all(row["split"] != "val" for row in rows)
 
 
 # --------------------------------------------------------------------------- #

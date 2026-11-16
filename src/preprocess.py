@@ -27,7 +27,17 @@ from typing import Callable, Protocol
 
 from PIL import Image
 
-from src.data import build_split_rows, list_identity_images, write_manifest
+from src.data import (
+    DEFAULT_GALLERY_FRACTION,
+    DEFAULT_IDENTITY_FRACTIONS,
+    MIN_TEST_IMAGES,
+    SPLIT_MODES,
+    build_split,
+    list_identity_images,
+    load_identity_partition,
+    write_manifest,
+    write_split_artifacts,
+)
 from src.protocol import CROP_BBOX, CROP_ROLES, CROP_SAM, require_crop
 from src.sam_mask import (
     SAM_BACKENDS,
@@ -85,14 +95,21 @@ def prepare_from_ready_dir(
     output_manifest: str,
     *,
     seed: int = 0,
-    train_ratio: float = 0.6,
-    gallery_ratio: float = 0.2,
+    split_mode: str = "identity",
+    fractions: dict[str, float] | None = None,
+    gallery_fraction: float = DEFAULT_GALLERY_FRACTION,
+    min_test_images: int = MIN_TEST_IMAGES,
+    identity_partition: dict[str, list[str]] | None = None,
 ) -> dict:
     """Build a crop tree and manifest from already background-removed images.
 
     Expected layout::
 
         ready_dir/<identity_id>/*.png
+
+    Identities are partitioned disjointly into train / val / test by default; see
+    :func:`src.data.build_split`. ``split_mode="within"`` restores the legacy
+    image-level split and is not a default.
     """
 
     ready = Path(ready_dir)
@@ -113,23 +130,29 @@ def prepare_from_ready_dir(
         if (parent / "src").is_dir():
             repo_root = parent
             break
-    rows = build_split_rows(
+    plan = build_split(
         copied,
         root=repo_root,
         seed=seed,
-        train_ratio=train_ratio,
-        gallery_ratio=gallery_ratio,
+        split_mode=split_mode,
+        fractions=fractions,
+        gallery_fraction=gallery_fraction,
+        min_test_images=min_test_images,
+        identity_partition=identity_partition,
     )
-    write_manifest(output_manifest, rows)
+    manifest = write_split_artifacts(plan, manifest_csv=output_manifest, source_root=out)
     summary = {
         "num_identities": len(copied),
         "num_images": sum(len(v) for v in copied.values()),
         "output_dir": str(out),
         "output_manifest": str(Path(output_manifest)),
+        "split_mode": plan.split_mode,
+        "split_json": manifest["split_json"],
+        "split_markdown": manifest["split_md"],
     }
     print(
         f"Prepared {summary['num_identities']} identities / {summary['num_images']} images -> "
-        f"{output_manifest}",
+        f"{output_manifest} ({plan.split_mode} split)",
         flush=True,
     )
     return summary
@@ -153,6 +176,12 @@ def run_preprocess(
     sam_multimask: bool = True,
     detector: Detector | Callable[[Path], list[Box]] | None = None,
     masker: SamMasker | None = None,
+    split_mode: str = "identity",
+    fractions: dict[str, float] | None = None,
+    gallery_fraction: float = DEFAULT_GALLERY_FRACTION,
+    min_test_images: int = MIN_TEST_IMAGES,
+    identity_partition: dict[str, list[str]] | None = None,
+    seed: int = 0,
 ) -> dict:
     """Prepare one crop manifest.
 
@@ -166,7 +195,17 @@ def run_preprocess(
 
     crop = require_crop(crop)
     if ready_dir:
-        prepare_from_ready_dir(ready_dir, output_dir, output_manifest)
+        prepare_from_ready_dir(
+            ready_dir,
+            output_dir,
+            output_manifest,
+            seed=seed,
+            split_mode=split_mode,
+            fractions=fractions,
+            gallery_fraction=gallery_fraction,
+            min_test_images=min_test_images,
+            identity_partition=identity_partition,
+        )
         return {"crop": crop, "ready_dir": str(ready_dir), "num_images": None}
 
     required = (
@@ -247,6 +286,7 @@ def run_preprocess(
                     "image_path": str(dest),
                     "identity_id": row["identity_id"],
                     "split": row["split"],
+                    **({"partition": row["partition"]} if row.get("partition") else {}),
                 }
             )
     write_manifest(output_manifest, rows_out)
@@ -321,6 +361,53 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(CROP_SAM, CROP_BBOX),
         help="sam keeps the masked back pattern. bbox crops the original frame and skips SAM.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Seed for the identity-disjoint split built from --ready-dir.",
+    )
+    parser.add_argument(
+        "--split-mode",
+        default="identity",
+        choices=SPLIT_MODES,
+        help=(
+            "identity (default) holds whole animals out of training; within is the legacy "
+            "image-level split that leaks identities."
+        ),
+    )
+    parser.add_argument(
+        "--train-frac", type=float, default=DEFAULT_IDENTITY_FRACTIONS["train"],
+        help="Fraction of identities in train (identity mode).",
+    )
+    parser.add_argument(
+        "--val-frac", type=float, default=DEFAULT_IDENTITY_FRACTIONS["val"],
+        help="Fraction of identities in validation (identity mode).",
+    )
+    parser.add_argument(
+        "--test-frac", type=float, default=DEFAULT_IDENTITY_FRACTIONS["test"],
+        help="Fraction of identities in test (identity mode).",
+    )
+    parser.add_argument(
+        "--gallery-fraction",
+        type=float,
+        default=DEFAULT_GALLERY_FRACTION,
+        help="Share of each test identity's images used as gallery; the rest become queries.",
+    )
+    parser.add_argument(
+        "--min-test-images",
+        type=int,
+        default=MIN_TEST_IMAGES,
+        help="Minimum images for an identity to be eligible for the test partition.",
+    )
+    parser.add_argument(
+        "--partition-from",
+        default="",
+        help=(
+            "Reuse the identity partition recorded in this split JSON, so both crop arms "
+            "hold out the same animals."
+        ),
+    )
     return parser
 
 
@@ -342,6 +429,18 @@ def main(argv: list[str] | None = None) -> int:
             sam_cache_dir=args.sam_cache_dir,
             sam_min_area_frac=args.sam_min_area_frac,
             sam_multimask=not args.sam_single_mask,
+            split_mode=args.split_mode,
+            seed=args.seed,
+            fractions={
+                "train": args.train_frac,
+                "val": args.val_frac,
+                "test": args.test_frac,
+            },
+            gallery_fraction=args.gallery_fraction,
+            min_test_images=args.min_test_images,
+            identity_partition=(
+                load_identity_partition(args.partition_from) if args.partition_from else None
+            ),
         )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(exc, file=sys.stderr)

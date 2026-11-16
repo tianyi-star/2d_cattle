@@ -61,9 +61,10 @@ Three consequences:
 
 ## 1.1 Status legend used in this audit
 
-Each finding carries one of: **open** (still true), **fixed** (`fix/sam-and-pruning`), or
-**partly addressed** (the mechanism exists, the measurement does not). As of `ac69fb7`: §3 and §4
-are fixed; §5, §6 and §11 items 4–9 are open; §11 items 6 and 11 are partly addressed.
+Each finding carries one of: **open** (still true), **fixed** (`fix/sam-and-pruning` or
+`feat/identity-disjoint-splits`), or **partly addressed** (the mechanism exists, the measurement
+does not). As of `feat/identity-disjoint-splits`: §3, §4 and §8 are fixed; §5, §6 and §11 items 4–9
+are open; §11 items 6 and 11 are partly addressed.
 
 ---
 
@@ -250,7 +251,7 @@ reversed. The manuscript now states the archive origin and the local path in §3
 | Site and dates | Xinshiji commercial farm, Changge County, Henan Province, China; 31 Dec 2022 – 9 Jan 2023 | Documented in the data article (doi `10.1038/s41597-025-04783-6`). Not yet written into the manuscript — flagged `【待补】` pending the author confirming the local copy matches that campaign. |
 | Platform | DJI M300 with Zenmuse L1 LiDAR; integrated RGB camera at 1/3 Hz | Documented in the data article. RGB-specific parameters (focal length, GSD, native resolution) are **not** stated there in the text retrieved, so they remain `【待补】`. |
 | Images actually used | none available | `data/` absent and gitignored; the local copy is on the GPU server. No manifest, no per-identity image counts, no split sizes in the repository. |
-| Split construction | `src/data.py` `build_split_rows()`; `src/aggregate.py` `build_seed_manifest()` | **See §8 — the most serious open defect.** The code splits images *within* each identity; it does not hold identities out. |
+| Split construction | `src/data.py` `build_split()`; `src/aggregate.py` `build_seed_manifest()` | **Fixed — see §8.1.** The default is identity-disjoint (whole animals to train/val/test, gallery and query from held-out animals only) and a JSON + Markdown split record is emitted. The historical finding that the audited revision split images *within* each identity is kept in §8.0. |
 | Annotation protocol | none | No guidelines, no identity-verification procedure, no inter-annotator check, no detection ground truth. |
 | Acquisition parameters (GSD, camera, resolution) | not in the archive description | `【待补】` in §3.2. The archive description names the platform but not the RGB optics. |
 
@@ -300,12 +301,17 @@ and wrote `metrics.json` with `parameters: 1635232`, `flops: 242114560.0`,
 `num_gallery: 6`, `num_query: 6`, `rank1: 0.0`. The plumbing works; the *science* has not been
 done. (Rank-1 = 0.0 is expected: 6 identities, 3 epochs, random init, ellipses.)
 
-## 8. Identity-disjoint splitting: specified in the paper, not implemented in the code
+## 8. Identity-disjoint splitting: was specified in the paper, not implemented — now implemented
 
-The manuscript now specifies, and argues for, a partition in which each of the 96 animals appears
-in exactly one of the training, validation and test sets. **The code does not do this.** It does the
-opposite, and the consequence is that every rank-1 number the current pipeline can produce is
-inflated.
+**Status: fixed.** The finding below is kept as the record of the audited `main` revision; §8.1
+states the current behaviour and the command that reproduces it.
+
+### 8.0 The finding at the audited revision
+
+The manuscript specifies, and argues for, a partition in which each of the 96 animals appears in
+exactly one of the training, validation and test sets. **At that revision the code did not do this.**
+It did the opposite, and the consequence is that every rank-1 number the then-current pipeline could
+produce was inflated.
 
 `src/data.py:84-129` (`build_split_rows`), which `src/aggregate.py:51` (`build_seed_manifest`)
 delegates to, iterates over identities and, for each one, shuffles *that identity's own images* and
@@ -318,9 +324,9 @@ consequences:
 2. **Near-duplicate leakage.** Consecutive UAV frames of one animal are nearly identical. Splitting
    within an identity puts temporally adjacent frames on both sides of the train/test boundary, so
    even the retrieval metric measures frame memorisation.
-3. **No validation split exists at all.** `SPLITS = ("train", "gallery", "query")`
-   (`src/data.py:18`); there is no `val`, no identity-holdout flag, and no code path that could
-   produce one.
+3. **No validation split existed at all.** `SPLITS = ("train", "gallery", "query")`
+   (`src/data.py:18`); there was no `val`, no identity-holdout flag, and no code path that could
+   produce one. (Fixed: `SPLITS` now includes `val`, and §8.1 describes the partition.)
 
 Note also that `gallery` is not a held-out class set: `src/evaluate.py:154-159` ranks each query
 against *individual gallery embeddings* with duplicate-identity suppression, so gallery images of a
@@ -328,8 +334,55 @@ trained animal are simply more training-distribution views of it.
 
 **Required before any reported figure:** a partitioning routine that assigns identity ids to
 `train` / `val` / `test` disjointly, emits the three lists, and asserts that their intersection is
-empty. The manuscript's §3.2.1 specifies the protocol; the paper is currently ahead of the code on
-this point, and §3.2.1 says so in the text rather than leaving a reader to discover it.
+empty. The manuscript's §3.2.1 specifies the protocol.
+
+### 8.1 Current state after the fix
+
+`src/data.py` now implements the protocol, and it is the default:
+
+| Property | Implementation |
+| --- | --- |
+| Default mode | `build_split(..., split_mode="identity")`; `build_seed_manifest()` and the `manifest` CLI subcommand both default to it |
+| Assignment | identity ids sorted, shuffled with `random.Random(seed)`, then consumed in order: test takes the first identity ids with at least `min_test_images` images, then validation, then training |
+| Disjointness | `assert_identity_disjoint()` raises `IdentityLeakageError` naming the identity and both partitions; `src/train.py` and `src/evaluate.py` call it before use |
+| Partitions | `train`, `val`, `test`; gallery and query are both drawn from the held-out test animals only |
+| Proportions | `--train-frac / --val-frac / --test-frac`, defaults 0.6667 / 0.1667 / 0.1667 → **64 / 16 / 16 identities** for the 96-identity archive, allocated by largest remainder |
+| Test eligibility | `--min-test-images` (default 2) keeps single-frame animals out of test, because they cannot supply both a gallery and a query view |
+| Checkpoint selection | `src/train.py` ranks validation queries against validation galleries; the test gallery/query pair is only read by `src/evaluate.py` after training |
+| Legacy mode | `split_mode="within"` (CLI `--split-mode within`) restores the old per-identity shuffle; it is never a default, and both its JSON record and Markdown summary state that any Rank-1 from it is inflated |
+| Record | `manifest.csv` + `manifest.split.json` (mode, seed, proportions, identity lists, counts, per-identity statistics, totals, CSV SHA-256) + `manifest.table1.md` (Table 1, ready to paste) |
+
+**Table 1 is generated from the manifest.** `manifest.table1.md` carries exactly the quantities
+Table 1 of the manuscript asks for — identities per split, images per split, images per identity
+min / median / max and mean ± SD, and the exclusion list — so the table is filled from the split
+record rather than transcribed, and the numbers cannot drift from the split that was actually used.
+The JSON records the same values in machine-readable form plus the CSV's SHA-256, which identifies
+the exact split a reported figure was produced with.
+
+Reproduce it on the machine that holds the archive:
+
+```bash
+# Plan only, no files written:
+python3 -m src.aggregate manifest --image-root /path/to/identity_crops \
+  --output-manifest data/manifest.csv --seed 0 --dry-run
+
+# Write the split and its records:
+python3 -m src.aggregate manifest --image-root /path/to/identity_crops \
+  --output-manifest data/manifest.csv --seed 0
+```
+
+or, for all seeds and both crop arms plus a copy of the records in the results directory:
+
+```bash
+scripts/run_all_cells.sh --data-root /path/to/crop_trees --manifest-only
+```
+
+**What is still true:** no run has used the new partition yet, so no identity-disjoint Rank-1 has
+been measured, and Table 1's identity and image counts cannot be filled from the repository — the
+archive is on the author's GPU server and not reachable here. The proportions are known
+(64 / 16 / 16 identities); the image counts and per-identity statistics come from the manifest the
+first run writes, not from this audit.
+
 
 ### 8.1 A preliminary six-cell run existed and was discarded
 
@@ -375,9 +428,11 @@ No LR schedule, no warm-up, no early stopping, no mixed precision, no EMA.
 The committed "training curves" therefore describe a 1000-epoch schedule on a config that
 trains for 30. A further self-inconsistency proving the curves are fabricated.
 
-Also absent: any validation split. `src/data.py:18` defines `SPLITS = ("train", "gallery",
-"query")` — no `val`. `paper/method.tex` builds its whole F-ODS argument on a validation split
-that does not exist in code.
+Also absent at the audited revision: any validation split. `SPLITS = ("train", "gallery",
+"query")` had no `val`, while `paper/method.tex` builds its whole F-ODS argument on a validation
+split. **Fixed for the split itself** (§8.1): `SPLITS` now contains `val`, and `src/train.py` selects
+its checkpoint on the validation animals rather than on the test animals. F-ODS itself is still not
+implemented, so the F-ODS narrative in `paper/method.tex` remains unsupported by code.
 
 ## 10. CEA format requirements vs. our evidence
 
@@ -439,6 +494,10 @@ marked.
 | ArcFace is implemented per Deng et al. (2019), cos-margin with the $\cos(\pi-m)$ guard | `src/arcface.py:44-58` |
 | Evaluation is cosine retrieval over $\ell_2$-normalised embeddings, deduplicated by identity | `src/evaluate.py:97-121` |
 | Rank-k counts identities, not images (duplicates suppressed) | `src/evaluate.py:106-119` |
+| The default split is identity-disjoint: whole animals to train/val/test, gallery and query from held-out animals only | `src/data.py` `build_split()`; §8.1 |
+| No identity can appear in two partitions without an exception | `src/data.py` `assert_identity_disjoint()`, `IdentityLeakageError`; `tests/test_identity_disjoint_split.py` |
+| The split is recorded as a manifest with seed, mode, proportions, identity lists and counts | `src/data.py` `build_split_manifest()` → `manifest.split.json` + `manifest.table1.md` |
+| Checkpoint selection uses the validation animals, not the test animals | `src/train.py` `val_retrieval_rows()`; `src/data.py` |
 | $\Delta_{\mathrm{SAM}}$ is defined as Rank-1(sam) − Rank-1(bbox) | `src/evaluate.py:42-49` |
 | Param count excludes the ArcFace weight matrix | `src/models.py`; `src/protocol.py:47-50` |
 | Parameter and MAC counts in §7 (pruned and unpruned) | Reproduced by running `count_parameters` / `estimate_flops` |
@@ -471,7 +530,7 @@ marked.
 | F-ODS support selection was applied | No F-ODS code in the current tree (deleted in `72f775a`); README/method.tex describe it, nothing implements it |
 | Quality-weighted ArcFace loss $\mathcal{L}_{\mathrm{total}}$ | `src/train.py:126` uses the plain unweighted `head(embeddings, labels)`; no $w_i$ anywhere in `src/` |
 | Dynamic self-training / pseudo-labelling results | No such module; `src/self_sup_dynamic.py` was deleted in `7917b22`'s lineage; nothing in `src/` references it |
-| Few-shot K ∈ {1,5,10} protocol | `paper/method.tex:380-381` only; no K-shot sampler in code. `src/data.py` uses a fixed 0.6/0.2/0.2 split |
+| Few-shot K ∈ {1,5,10} protocol | `paper/method.tex:380-381` only; no K-shot sampler in code. `src/data.py` uses an identity-disjoint 64/16/16 identity partition, or a fixed 0.6/0.2/0.2 per-identity split in the legacy `within` mode |
 | YOLO backbone for the CNN branch | It is a plain strided-conv stack (§7) |
 | Reproduction of Wang et al. (2025) | Their code is not vendored; the branch is a random-init ResNet (§7) |
 | Comparison against published cattle re-ID numbers | No external baseline was run |
@@ -487,11 +546,14 @@ marked.
 
 Ordered by how much they block a CEA submission.
 
-1. **Identity-disjoint split must be implemented.** §8. The current manifest builder splits images
-   *within* each identity, so every identity appears in train, gallery and query; any rank-1 from it
-   is inflated by identity and near-duplicate leakage. This is now the first thing to fix, ahead of
-   the runs, because it determines whether the numbers mean anything. The manuscript specifies the
-   protocol (§3.2.1) and states in the text that the code does not yet implement it.
+1. ~~**Identity-disjoint split must be implemented.**~~ **Fixed.** `src/data.py` now partitions whole
+   animals into disjoint `train` / `val` / `test` sets as the default, raises on any overlap, and
+   writes a JSON split manifest plus a Table-1-ready Markdown summary (§8.1). The historical finding
+   — that the audited revision split images *within* each identity, so every identity appeared in
+   train, gallery and query and any rank-1 from it was inflated — is kept in §8.0. **Still
+   outstanding:** the counts themselves. Table 1 must be filled from the manifest the first real run
+   writes; the proportions (64 / 16 / 16 identities) are known, the per-identity image counts are not
+   in this repository.
 2. **Real-data runs.** All six cells on the local copy of the Zenodo archive with `configs/experiment.yaml`,
    using the identity-disjoint partition. Without this there is no paper.
 3. ~~**A working SAM stage.**~~ **Fixed in `fix/sam-and-pruning`.** `src/sam_mask.py` prompts SAM with the detector box (`vit_b` by default, `vit_t` via MobileSAM, or ultralytics), applies `Crop(I ⊙ M, B_M)`, loads the segmenter lazily, caches masks on disk keyed by image id + detection box, and **raises** when weights are missing rather than falling back to the box crop. `src/preprocess.py --crop sam` calls it; `--crop bbox` is unchanged. Verified with real `sam_vit_b_01ec64.pth` on CPU (mask excludes pasture, shadow and legs; cached second call ~1 ms). Still outstanding: the actual Δ_SAM **measurement** on the archive — the code can now produce both arms, but no run has been done.

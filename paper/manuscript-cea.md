@@ -524,8 +524,18 @@ The split is fixed once, recorded in the manifest, and shared by all six cells a
 arms, so that no comparison between backbones or between crops is confounded by a difference in
 which animals were held out. The training, validation and test identity counts are reported in
 Table 2.
-【待补: 训练/验证/测试三个集合的身份数与具体划分方式（是否按身份编号分层、是否按体重或月龄
-      分层、随机种子），以及划分名单——须在实测运行后由清单文件直接导出，不得事后指定】
+
+The partition is drawn by sorting the identity identifiers, shuffling them with a fixed random seed,
+and assigning whole animals to the three sets in that order; the seed, the split mode, the requested
+proportions, the complete identity identifier list of each set, the image count of each set and the
+per-identity image statistics are all written to a machine-readable split manifest at run time. The
+requested proportions are 64 / 16 / 16 identities for training, validation and testing, allocated by
+largest remainder so that the three counts always sum to the number of animals partitioned; the
+manifest records the realised counts and any animal excluded, with the reason. An animal is eligible
+for the test set only if it contributes at least two frames, one for the gallery and one for the
+query; this keeps a single-frame animal from being unretrievable by construction. Both crop arms
+reuse the same recorded partition, so the SAM and box columns are evaluated on the same held-out
+animals. Table 2 is filled from that manifest rather than transcribed from a separate record.
 
 Table 2 accounts for the images and identities that enter each split. Both crop arms draw on the
 same accounting, so the table has one version rather than one per arm.
@@ -556,17 +566,24 @@ excluded animals, and the exclusions must be reported here rather than silently 
      Every other cell is unknown and must be filled from the manifest that the measured run
      actually used. See paper/evidence-audit.md section 6. -->
 
-**Implementation status of the split.** The reference code as committed does *not* yet implement
-this protocol: its manifest builder shuffles images within each identity and assigns every
-identity to all three splits, which is precisely the leak described above. The identity-disjoint
-partition specified here must therefore be produced explicitly and verified before any reported
-figure is meaningful. This discrepancy is tracked as an open item in the audit and is the first
-thing to fix before the measured runs.
-<!-- src/data.py build_split_rows() iterates per identity and splits that identity's images
-     across train/gallery/query; src/aggregate.py build_seed_manifest() delegates to it.
-     No identity-holdout path and no "val" split exist in the code (SPLITS = train/gallery/query).
-     See paper/evidence-audit.md section 8. -->
-【待补: 实现身份隔离划分的代码路径，并在清单层面验证三个集合的身份编号互不相交】
+**Implementation status of the split.** The reference code implements this protocol as its
+default. `src/data.py` partitions whole animals into disjoint `train`, `validation` and `test` sets,
+places a test animal's frames in the gallery and query roles, and raises an error if any identifier
+appears in more than one set; `src/train.py` and `src/evaluate.py` both perform that check before
+use, and the training entry point selects its checkpoint on the validation animals rather than on the
+test animals. A single command writes the manifest together with a JSON record of the partition
+(mode, seed, proportions, identity lists, image counts, totals and a SHA-256 of the manifest itself)
+and a Markdown summary of the same quantities, from which Table 1 is filled. Because the code and
+the manifest are the same artefact, the partition quoted in this paper can be regenerated exactly
+from the seed and mode it records.
+<!-- src/data.py build_split() (default split_mode="identity"); assert_identity_disjoint();
+     build_split_manifest() -> <manifest>.split.json and <manifest>.table1.md;
+     src/aggregate.py build_seed_manifest() and the `manifest` subcommand.
+     Reproduce: python3 -m src.aggregate manifest --image-root <tree> \
+       --output-manifest data/manifest.csv --seed 0 [--dry-run]
+     See paper/evidence-audit.md section 8.1. -->
+【待补: 训练/验证/测试三个集合的身份编号名单与逐身份图像数，须由实测运行的清单文件直接填表；
+      本次修改仅实现并固定了划分协议与清单格式，未进行任何实测】
 
 Because the study involves only overhead observation of animals in their normal environment, with
 no handling, restraint or intervention, the ethical position should be stated explicitly rather
@@ -704,8 +721,8 @@ so that no cell can be tuned independently of the others.
 | Embedding dimension | 512 | `configs/experiment.yaml` |
 | Batch size | 8 | `configs/experiment.yaml` |
 | Epoch budget | 1000 | `configs/experiment.yaml` |
-| Optimiser | Adam | `src/train.py:95` |
-| Learning rate | 1 × 10⁻⁴, constant | `configs/experiment.yaml`; `src/train.py:95-99` |
+| Optimiser | Adam | `src/train.py:114` |
+| Learning rate | 1 × 10⁻⁴, constant | `configs/experiment.yaml`; `src/train.py:114-118` |
 | Learning-rate schedule | none | `src/train.py` constructs the optimiser only, with no scheduler |
 | Weight decay | 1 × 10⁻⁴ | `configs/experiment.yaml` |
 | ArcFace scale $s$ | 64.0 | `configs/experiment.yaml` |
@@ -736,15 +753,15 @@ the dorsal coat pattern is not chiral, and because both arms receive it identica
 
 The training loop is a fixed-epoch procedure with no early stopping and no learning-rate schedule.
 <!-- src/train.py:113-158 -->
-A rank-1/rank-5 callback evaluates the current model on the gallery and query splits every 200
-epochs, and at the final epoch, which for a 1000-epoch budget gives evaluations at epochs 200,
-400, 600, 800 and 1000. The checkpoint with the best observed rank-1 is retained.
-<!-- src/callbacks.py:44-46: should_run = epoch % every_n_epochs == 0 or epoch == epochs;
-     src/train.py:137-156 saves checkpoint_best.pt on an improved rank-1. -->
-This is a model-selection step and is reported as such: it uses gallery and query data, and the
-selection criterion is therefore not independent of the reported metric. It is applied identically
-to all six cells, so it does not favour one cell over another, but it does mean that the reported
-figures are best-observed rather than single-final-epoch values.
+A rank-1/rank-5 callback evaluates the current model every 200 epochs, and at the final epoch,
+which for a 1000-epoch budget gives evaluations at epochs 200, 400, 600, 800 and 1000. The
+checkpoint with the best observed rank-1 is retained.
+<!-- src/callbacks.py should_run = epoch % every_n_epochs == 0 or epoch == epochs;
+     src/train.py selects checkpoint_best.pt on an improved rank-1. -->
+On the identity-disjoint manifest this selection uses the validation animals only. The test gallery
+and query are not read until evaluation. The same rule is applied to every cell, so it does not
+favour one cell over another. The reported figures are the best validation checkpoint rather than
+the single final-epoch weights.
 
 **Compute.** All six cells are trained on a single NVIDIA GeForce RTX 4090 (48 GB). Wall-clock
 training time per cell will be reported in Table 4, in the row order used throughout this paper
@@ -835,9 +852,9 @@ The gallery and query splits are frozen before any model is trained, and the two
 them exactly, so the comparison between arms is not confounded by a change in the evaluation set.
 The number of gallery and query images is reported with the results.
 
-<!-- src/evaluate.py:154-159, and src/data.py:18 which defines the three splits. Note that the
-     repository defines no validation split; any hyperparameter chosen on gallery or query data
-     must be disclosed as such. -->
+<!-- src/evaluate.py ranks the test gallery against the test queries. src/data.py defines
+     train, val, gallery and query. The default identity-disjoint split puts gallery and query
+     on the test animals only; checkpoint selection uses val. -->
 
 Cost is measured on the inference embedding function only, at the common input resolution of
 224 × 224, with single-image forward passes. Parameters are counted as trainable parameters of the
@@ -1180,12 +1197,10 @@ the model survive a change of premises — is not answered by a single-site expe
 $\Delta_{\mathrm{SAM}}$ result should be read as evidence about mechanism rather than as a
 guarantee of transfer.
 
-*Model selection on the evaluation split.* The retained checkpoint is the one with the best
-observed rank-1 on the gallery/query splits, as described in Section 3.6. The reported figures are
-therefore mildly optimistic in absolute terms. The bias is applied identically to all six cells and
-so should not affect the ordering, but a fully clean protocol would carve a validation split for
-this purpose. The reference implementation defines no validation split, which is a shortcoming of
-the protocol as implemented.
+*Model selection.* The retained checkpoint is the one with the best observed rank-1 on the
+validation animals, as described in Section 3.6. The test identities are not used for that choice.
+The legacy within-identity split has no validation partition and falls back to selecting on the
+gallery and query; that split is not the reported protocol.
 
 *Epoch budget.* A fixed 1000-epoch budget with a constant learning rate and no schedule was chosen
 to keep the comparison symmetric. If some cells have not converged at that budget, the budget
